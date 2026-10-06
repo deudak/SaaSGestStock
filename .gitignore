@@ -1,0 +1,19 @@
+# Sauvegardes locales et caches
+_backup_front_src_*/
+.vite/
+
+# Secrets
+.env
+.env.*
+!.env.example
+
+# Dépendances et builds
+node_modules/
+vendor/
+dist/
+
+# Éditeurs / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
