@@ -1,19 +1,20 @@
 import { useRef, useState } from "react";
-import { useNavigate } from "react-router-dom";
 import toast from "react-hot-toast";
-import { FaDatabase, FaDownload, FaFileInvoice, FaRedo, FaSave, FaStore, FaUpload, FaSlidersH } from "react-icons/fa";
+import { FaDatabase, FaDownload, FaFileInvoice, FaPalette, FaRedo, FaSave, FaStore, FaTrash, FaUpload, FaSlidersH } from "react-icons/fa";
 import { useStore } from "../../store/StoreContext";
 import { useConfirm } from "../../components/ui/Confirm";
 import { Card, CardHeader, PageHeader } from "../../components/ui/Card";
 import Button from "../../components/ui/Button";
 import { Field, Input, Textarea, Toggle } from "../../components/ui/Form";
 import { downloadBlob, todayStamp } from "../../lib/csv";
+import { fileToDataUrl } from "../../lib/image";
+import { BRAND_PRESETS, DEFAULT_BRAND_COLOR, brandBase, isHexColor, isTooLight } from "../../lib/branding";
+import BrandLogo from "../../components/ui/BrandLogo";
 
 export default function AdminSettings() {
-  const { state, actions } = useStore();
+  const { state, actions, sync } = useStore();
   const confirm = useConfirm();
-  const navigate = useNavigate();
-  const fileRef = useRef(null);
+  const logoRef = useRef(null);
   const [form, setForm] = useState(state.settings);
   const dirty = JSON.stringify(form) !== JSON.stringify(state.settings);
 
@@ -35,35 +36,34 @@ export default function AdminSettings() {
     toast.success("Paramètres enregistrés");
   };
 
+  const uploadLogo = async (event) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.type.startsWith("image/")) return toast.error("Choisissez un fichier image.");
+    if (file.size > 5 * 1024 * 1024) return toast.error("Image trop lourde (5 Mo maximum).");
+    try {
+      setValue("logo")(await fileToDataUrl(file, 400, 0.92, "image/png"));
+    } catch (error) {
+      toast.error(error.message);
+    }
+  };
+
   const exportBackup = () => {
     downloadBlob(new Blob([actions.exportData()], { type: "application/json" }), `sauvegarde-dym-stock-${todayStamp()}.json`);
     toast.success("Sauvegarde téléchargée");
   };
 
-  const importBackup = async (event) => {
-    const file = event.target.files?.[0];
-    event.target.value = "";
-    if (!file) return;
-    const ok = await confirm({ title: "Restaurer cette sauvegarde ?", message: "Toutes les données actuelles seront remplacées par celles du fichier.", confirmLabel: "Restaurer" });
-    if (!ok) return;
-    try {
-      actions.importData(await file.text());
-      toast.success("Données restaurées");
-    } catch (error) {
-      toast.error(error.message || "Fichier invalide");
-    }
-  };
-
   const reset = async () => {
     const ok = await confirm({
-      title: "Réinitialiser toutes les données ?",
-      message: "Produits, ventes, clients et réglages seront remplacés par les données de démonstration. Vous serez déconnecté. Pensez à télécharger une sauvegarde avant.",
-      confirmLabel: "Tout réinitialiser",
+      title: "Recharger les données depuis le serveur ?",
+      message: "Les données de cet appareil seront remplacées par celles enregistrées sur le serveur. Les saisies faites hors ligne et pas encore synchronisées seront perdues : téléchargez une sauvegarde avant.",
+      confirmLabel: "Recharger",
     });
     if (!ok) return;
-    actions.resetData();
-    navigate("/login", { replace: true });
-    toast.success("Données réinitialisées");
+    const result = await actions.resetData();
+    if (!result.ok) return toast.error(result.error);
+    toast.success("Données rechargées depuis le serveur");
   };
 
   return (
@@ -106,6 +106,71 @@ export default function AdminSettings() {
           </Card>
 
           <Card>
+            <CardHeader title="Identité visuelle" subtitle="Visible par vous et vos vendeurs, et sur tous vos documents" icon={FaPalette} tone="violet" />
+            <div className="grid gap-6 sm:grid-cols-2">
+              <div className="space-y-4">
+                <Field label="Logo" hint="PNG, JPG ou SVG — fond transparent conseillé">
+                  <div className="flex items-center gap-3">
+                    <BrandLogo settings={form} className="h-14 w-14 border border-slate-200" />
+                    <div className="flex flex-wrap gap-2">
+                      <Button size="sm" variant="secondary" icon={FaUpload} onClick={() => logoRef.current?.click()}>
+                        {form.logo ? "Changer" : "Importer"}
+                      </Button>
+                      {form.logo && (
+                        <Button size="sm" variant="danger-ghost" icon={FaTrash} onClick={() => setValue("logo")("")}>
+                          Retirer
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                  <input ref={logoRef} type="file" accept="image/*" className="hidden" onChange={uploadLogo} />
+                </Field>
+                <Field label="Couleur principale" hint={isTooLight(form.brandColor) ? "Couleur claire : elle sera assombrie pour rester lisible." : "Boutons, menus et en-têtes de facture"}>
+                  <div className="flex flex-wrap items-center gap-2">
+                    {BRAND_PRESETS.map((color) => (
+                      <button
+                        key={color}
+                        type="button"
+                        onClick={() => setValue("brandColor")(color)}
+                        className={`h-7 w-7 rounded-full ring-offset-2 transition ${form.brandColor === color ? "ring-2 ring-slate-900" : "hover:scale-110"}`}
+                        style={{ background: color }}
+                        aria-label={`Couleur ${color}`}
+                      />
+                    ))}
+                    <input
+                      type="color"
+                      value={isHexColor(form.brandColor) ? form.brandColor : DEFAULT_BRAND_COLOR}
+                      onChange={set("brandColor")}
+                      className="h-7 w-10 cursor-pointer rounded border border-slate-200 bg-white"
+                      aria-label="Couleur personnalisée"
+                    />
+                  </div>
+                </Field>
+              </div>
+
+              <div className="overflow-hidden rounded-xl border border-slate-200" aria-label="Aperçu de l'en-tête de facture">
+                <div className="flex items-start justify-between gap-3 border-b-2 bg-white p-4" style={{ borderColor: brandBase(form.brandColor) }}>
+                  <div className="min-w-0">
+                    {form.logo && <img src={form.logo} alt="" className="mb-2 max-h-10 max-w-[120px] object-contain" />}
+                    <p className="truncate text-sm font-extrabold text-slate-900">{form.shopName || "Nom commercial"}</p>
+                    <p className="truncate text-[11px] text-slate-500">{form.tagline}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-extrabold uppercase tracking-wider text-slate-900">Facture</p>
+                    <p className="text-[11px] font-semibold" style={{ color: brandBase(form.brandColor) }}>V-00042</p>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between bg-slate-50 p-4">
+                  <span className="text-[11px] text-slate-500">Aperçu</span>
+                  <span className="rounded-lg px-3 py-1.5 text-xs font-semibold text-white" style={{ background: brandBase(form.brandColor) }}>
+                    Nouvelle vente
+                  </span>
+                </div>
+              </div>
+            </div>
+          </Card>
+
+          <Card>
             <CardHeader title="Ventes & facturation" subtitle="Règles appliquées au point de vente" icon={FaFileInvoice} tone="green" />
             <div className="grid gap-4 sm:grid-cols-3">
               <Field label="TVA incluse dans les prix" hint="0 si non assujetti">
@@ -134,7 +199,7 @@ export default function AdminSettings() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Données" subtitle="Sauvegarde et restauration" icon={FaDatabase} tone="slate" />
+            <CardHeader title="Données" subtitle="Synchronisées avec le serveur" icon={FaDatabase} tone="slate" />
             <div className="space-y-2.5 text-sm">
               <div className="grid grid-cols-2 gap-2 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 <span>{state.products.length} produits</span>
@@ -145,18 +210,19 @@ export default function AdminSettings() {
               <Button variant="secondary" className="w-full" icon={FaDownload} onClick={exportBackup}>
                 Télécharger une sauvegarde
               </Button>
-              <Button variant="secondary" className="w-full" icon={FaUpload} onClick={() => fileRef.current?.click()}>
-                Restaurer une sauvegarde
-              </Button>
-              <input ref={fileRef} type="file" accept="application/json,.json" className="hidden" onChange={importBackup} />
+              <p className="text-xs text-slate-500">
+                {sync.pending
+                  ? `${sync.pending} modification${sync.pending > 1 ? "s" : ""} de cet appareil en attente d'envoi au serveur.`
+                  : "Toutes les modifications de cet appareil sont enregistrées sur le serveur."}
+              </p>
             </div>
           </Card>
 
           <Card className="border-rose-200">
             <CardHeader title="Zone sensible" icon={FaRedo} tone="red" />
-            <p className="mb-3 text-sm text-slate-600">Remet l'application dans son état de démonstration initial.</p>
+            <p className="mb-3 text-sm text-slate-600">Remplace les données de cet appareil par celles du serveur.</p>
             <Button variant="danger" className="w-full" icon={FaRedo} onClick={reset}>
-              Réinitialiser les données
+              Recharger depuis le serveur
             </Button>
           </Card>
         </div>

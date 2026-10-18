@@ -50,15 +50,22 @@ function FormFooter({ onCancel, label = "Enregistrer" }) {
   );
 }
 
-function TaskForm({ initial, equipment, onSubmit, onCancel }) {
-  const [form, set] = useForm({ product: "", task: "", status: "Planifié", assignedTo: "", costEstimate: "", ...initial, date: toDateInput(initial.date) });
+function TaskForm({ initial, equipment, technicians, onSubmit, onCancel }) {
+  const [form, set] = useForm({ product: "", task: "", status: "Planifié", assignedTo: "", costEstimate: "", ...initial, technicianId: initial.technicianId || "", date: toDateInput(initial.date) });
   return (
     <form
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
         if (!form.product.trim() || !form.task.trim()) return toast.error("Équipement et description requis.");
-        onSubmit({ ...form, date: new Date(form.date).toISOString(), costEstimate: Number(form.costEstimate) || 0 });
+        const technician = technicians.find((t) => t.id === form.technicianId);
+        onSubmit({
+          ...form,
+          technicianId: technician ? technician.id : null,
+          assignedTo: technician ? technician.name : form.assignedTo.trim(),
+          date: new Date(form.date).toISOString(),
+          costEstimate: Number(form.costEstimate) || 0,
+        });
       }}
     >
       <Field label="Équipement" required>
@@ -83,8 +90,16 @@ function TaskForm({ initial, equipment, onSubmit, onCancel }) {
             ))}
           </Select>
         </Field>
-        <Field label="Technicien">
-          <Input value={form.assignedTo} onChange={set("assignedTo")} placeholder="Nom du technicien" />
+        <Field label="Technicien" hint={technicians.length ? "Le maintenancier la verra dans son espace." : "Créez des comptes maintenanciers dans Équipe."}>
+          <Select value={form.technicianId} onChange={set("technicianId")}>
+            <option value="">Prestataire externe / non assigné</option>
+            {technicians.map((t) => (
+              <option key={t.id} value={t.id}>
+                {t.name}
+              </option>
+            ))}
+          </Select>
+          {!form.technicianId && <Input value={form.assignedTo} onChange={set("assignedTo")} placeholder="Nom du prestataire (facultatif)" className="mt-2" />}
         </Field>
         <Field label="Coût estimé">
           <Input type="number" min="0" value={form.costEstimate} onChange={set("costEstimate")} suffix="F" />
@@ -207,6 +222,7 @@ export default function AdminMaintenance() {
   const [modal, setModal] = useState(null); // { type, data }
 
   const usersById = useMemo(() => Object.fromEntries(state.users.map((u) => [u.id, u])), [state.users]);
+  const technicians = useMemo(() => state.users.filter((u) => u.role === "technician" && u.status === "actif"), [state.users]);
   const open = openMaintenance(state.maintenanceTasks);
   const reports = state.maintenanceTasks.filter((t) => t.status === "Signalé");
   const [yearAgo] = useState(() => Date.now() - 365 * 86400000);
@@ -508,6 +524,7 @@ export default function AdminMaintenance() {
           <TaskForm
             initial={modal.data}
             equipment={equipment}
+            technicians={technicians}
             onCancel={close}
             onSubmit={(data) => {
               actions.saveMaintenanceTask(modal.data.id ? { ...data, id: modal.data.id } : data);

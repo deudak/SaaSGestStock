@@ -11,12 +11,16 @@ return new class extends Migration
      */
     public function up(): void
     {
+        // Identifiants texte (« u_xxx ») générés aussi par le front hors ligne.
         Schema::create('users', function (Blueprint $table) {
-            $table->id();
+            $table->string('id', 40)->primary();
             $table->string('name');
             $table->string('email')->unique();
-            $table->timestamp('email_verified_at')->nullable();
+            $table->string('phone')->nullable();
             $table->string('password');
+            $table->enum('role', ['admin', 'seller'])->default('seller');
+            $table->string('shop')->nullable();
+            $table->enum('status', ['actif', 'inactif'])->default('actif');
             $table->rememberToken();
             $table->timestamps();
         });

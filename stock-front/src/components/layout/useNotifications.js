@@ -1,8 +1,8 @@
 import { useMemo } from "react";
 import { FaBoxOpen, FaCreditCard, FaTools, FaTruck } from "react-icons/fa";
 import { useStore } from "../../store/StoreContext";
-import { formatDate, formatMoney } from "../../lib/format";
-import { installmentRemaining, installmentStatus, lowStockProducts } from "../../store/selectors";
+import { formatDate, formatMoney, startOfDay } from "../../lib/format";
+import { installmentRemaining, installmentStatus, isAssignedTo, lowStockProducts } from "../../store/selectors";
 
 /** Alertes calculées à partir des données : stock, créances, maintenance, livraisons. */
 export default function useNotifications() {
@@ -13,13 +13,32 @@ export default function useNotifications() {
   return useMemo(() => {
     const list = [];
 
+    // Maintenancier : uniquement ses interventions et les pannes à prendre en charge
+    if (currentUser?.role === "technician") {
+      const endOfToday = new Date(startOfDay().getTime() + 86400000);
+      state.maintenanceTasks
+        .filter((task) => task.status !== "Terminé")
+        .forEach((task) => {
+          const unassigned = !task.technicianId && !task.assignedTo;
+          if (unassigned) {
+            list.push({ id: `mt-${task.id}`, icon: FaTools, tone: "violet", title: `Panne signalée : ${task.product}`, detail: task.task, to: "/technician" });
+          } else if (isAssignedTo(task, currentUser) && new Date(task.date) < endOfToday) {
+            const late = new Date(task.date) < startOfDay();
+            list.push({ id: `mt-${task.id}`, icon: FaTools, tone: late ? "red" : "amber", title: `${late ? "En retard" : "Aujourd'hui"} : ${task.product}`, detail: task.task, to: "/technician" });
+          }
+        });
+      const priority = { red: 0, violet: 1, amber: 2 };
+      return list.sort((a, b) => priority[a.tone] - priority[b.tone]);
+    }
+
     lowStockProducts(state.products).forEach((product) => {
       list.push({
         id: `stock-${product.id}`,
         icon: FaBoxOpen,
         tone: product.stock <= 0 ? "red" : "amber",
-        title: product.stock <= 0 ? `Rupture : ${product.name}` : `Stock bas : ${product.name}`,
-        detail: `${product.stock} en stock · seuil ${product.alertThreshold}`,
+        // Stock négatif : des appareils hors ligne ont vendu plus que le stock réel
+        title: product.stock < 0 ? `Survente : ${product.name}` : product.stock === 0 ? `Rupture : ${product.name}` : `Stock bas : ${product.name}`,
+        detail: product.stock < 0 ? `Stock à ${product.stock} : vendu au-delà du disponible, à régulariser` : `${product.stock} en stock · seuil ${product.alertThreshold}`,
         to: isAdmin ? `/admin/products?q=${encodeURIComponent(product.name)}` : "/seller/pos",
       });
     });
@@ -70,5 +89,5 @@ export default function useNotifications() {
 
     const priority = { red: 0, violet: 1, amber: 2, blue: 3 };
     return list.sort((a, b) => priority[a.tone] - priority[b.tone]);
-  }, [state.products, state.installments, state.maintenanceTasks, state.purchaseOrders, isAdmin, currentUser?.id, base]);
+  }, [state.products, state.installments, state.maintenanceTasks, state.purchaseOrders, isAdmin, currentUser, base]);
 }

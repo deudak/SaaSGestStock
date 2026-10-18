@@ -3,7 +3,7 @@ import { BrowserRouter, Navigate, Route, Routes } from "react-router-dom";
 import ProtectedRoute from "./ProtectedRoute";
 import { homePathFor } from "./paths";
 import AppShell from "../components/layout/AppShell";
-import { adminMenu, adminMobileNav, sellerMenu, sellerMobileNav } from "./menus";
+import { adminMenu, adminMobileNav, sellerMenu, sellerMobileNav, technicianMenu, technicianMobileNav } from "./menus";
 import { useAuth } from "../store/StoreContext";
 
 const Login = lazy(() => import("../pages/auth/Login"));
@@ -22,6 +22,10 @@ const AdminSettings = lazy(() => import("../pages/admin/Settings"));
 const SellerDashboard = lazy(() => import("../pages/seller/Dashboard"));
 const SellerPOS = lazy(() => import("../pages/seller/POS"));
 const SellerMaintenance = lazy(() => import("../pages/seller/Maintenance"));
+
+const TechnicianInterventions = lazy(() => import("../pages/technician/Interventions"));
+const TechnicianHistory = lazy(() => import("../pages/technician/History"));
+const TechnicianEquipment = lazy(() => import("../pages/technician/Equipment"));
 
 const Sales = lazy(() => import("../pages/shared/Sales"));
 const Customers = lazy(() => import("../pages/shared/Customers"));
@@ -81,6 +85,16 @@ export default function AppRoutes() {
               <Route path="customers" element={<Customers />} />
               <Route path="installments" element={<Installments />} />
               <Route path="maintenance" element={<SellerMaintenance />} />
+              <Route path="profile" element={<Profile />} />
+              <Route path="*" element={<NotFound />} />
+            </Route>
+          </Route>
+
+          <Route element={<ProtectedRoute role="technician" />}>
+            <Route path="/technician" element={<AppShell menu={technicianMenu} mobileNav={technicianMobileNav} spaceLabel="Espace maintenancier" base="/technician" />}>
+              <Route index element={<TechnicianInterventions />} />
+              <Route path="history" element={<TechnicianHistory />} />
+              <Route path="equipment" element={<TechnicianEquipment />} />
               <Route path="profile" element={<Profile />} />
               <Route path="*" element={<NotFound />} />
             </Route>

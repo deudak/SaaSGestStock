@@ -1,71 +1,292 @@
 /* eslint-disable react-refresh/only-export-components */
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
-import { createSeed, DEFAULT_SETTINGS, STORE_VERSION, uid } from "./seed";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import toast from "react-hot-toast";
+import { createEmptyState, DEFAULT_SETTINGS, STORE_VERSION, uid } from "./seed";
+import { readValue, requestPersistentStorage, writeValue } from "../lib/db";
+import { useAuth } from "./AuthContext";
+import { useConnectivity } from "./ConnectivityContext";
 
-// Toutes les données de l'application vivent ici et sont persistées dans le navigateur.
-// Chaque action correspond à un futur endpoint de l'API Laravel (stock-api) :
-// il suffira de remplacer le corps des actions par des appels axios.
+export { useAuth } from "./AuthContext";
 
-const STORAGE_KEY = "dymStore";
-const SESSION_KEY = "dymSession";
+// Données métier de l'entreprise de l'utilisateur connecté, persistées sur l'appareil (IndexedDB)
+// pour fonctionner hors ligne. Chaque entreprise a sa propre base locale (« store:<id> »).
+//
+// Synchronisation entre appareils : chaque action modifie l'état local tout de suite et ajoute
+// ses opérations à une file (state.outbox). La file part vers POST /api/sync dès que le réseau
+// est là ; la réponse contient les changements de tous les appareils depuis state.syncCursor.
+// Le stock n'est jamais envoyé tel quel : seuls les mouvements le sont, le serveur fait le total.
+
+const storeKey = (companyId) => `store:${companyId}`;
+const LEGACY_KEYS = ["dymStore", "dymSession"];
+
+const SYNC_INTERVAL = 30 * 1000;
+const SYNC_BATCH = 200;
+
+/** Entité synchronisée => clé du store */
+const COLLECTIONS = {
+  product: "products",
+  category: "categories",
+  supplier: "suppliers",
+  customer: "customers",
+  sale: "sales",
+  installment: "installments",
+  purchaseOrder: "purchaseOrders",
+  movement: "stockMovements",
+  task: "maintenanceTasks",
+  history: "maintenanceHistory",
+  sheet: "techSheets",
+};
 
 const StoreContext = createContext(null);
 
-function loadState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed?.version === STORE_VERSION) {
-        return { ...parsed, settings: { ...DEFAULT_SETTINGS, ...parsed.settings } };
-      }
-    }
-  } catch {
-    // données corrompues : on repart des données de démonstration
-  }
-  return createSeed();
+// eslint-disable-next-line no-unused-vars
+const stripPassword = ({ password, ...user }) => user;
+
+function normalizeState(parsed) {
+  if (parsed?.version !== STORE_VERSION) return null;
+  // eslint-disable-next-line no-unused-vars
+  const { settings, counters, ...rest } = parsed; // les paramètres appartiennent à l'entreprise (serveur)
+  return {
+    ...createEmptyState(),
+    ...rest,
+    users: (rest.users || []).map(stripPassword),
+    // Anciennes files (maintenance seule) : « type » est devenu « entity »
+    outbox: (rest.outbox || []).map((op) => ({ ...op, entity: op.entity || op.type })),
+  };
 }
 
-function loadSession() {
+function clearLegacyState() {
+  writeValue(LEGACY_KEYS[0], null).catch(() => {});
   try {
-    return localStorage.getItem(SESSION_KEY);
+    LEGACY_KEYS.forEach((key) => localStorage.removeItem(key));
   } catch {
-    return null;
+    // ignore
   }
+}
+
+/** Toutes les données de l'entreprise depuis le serveur (premier lancement, ou rechargement). */
+async function fetchCompanyState(api) {
+  const result = await api("GET", "/bootstrap");
+  if (!result.ok) return null;
+  const { cursor, ...data } = result.data;
+  return { ...createEmptyState(), ...data, syncCursor: cursor };
+}
+
+// Code de secours si le serveur est injoignable : 5 caractères, jamais attribués par le serveur (3-4)
+const localDeviceCode = () => Array.from({ length: 5 }, () => "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"[Math.floor(Math.random() * 32)]).join("");
+
+/** Code unique de l'appareil, utilisé dans les numéros (V-K7Q-0001) pour éviter tout doublon hors ligne. */
+async function ensureDeviceCode(state, api) {
+  if (state.deviceCode) return state;
+  const result = await api("POST", "/devices", { label: navigator.userAgent.slice(0, 200) });
+  return { ...state, deviceCode: result.ok ? result.data.code : localDeviceCode() };
+}
+
+async function loadCompanyState(companyId, api) {
+  const saved = normalizeState(await readValue(storeKey(companyId)));
+  const state = saved || (await fetchCompanyState(api)) || createEmptyState();
+  clearLegacyState();
+  return ensureDeviceCode(state, api);
 }
 
 const pad = (value, size) => String(value).padStart(size, "0");
 
+/** Prochain numéro libre pour un préfixe (ex. « V-K7Q- »), calculé à partir des données. */
+function nextNumber(values, prefix) {
+  let max = 0;
+  for (const value of values) {
+    if (typeof value === "string" && value.startsWith(prefix)) {
+      const n = parseInt(value.slice(prefix.length), 10);
+      if (n > max) max = n;
+    }
+  }
+  return max + 1;
+}
+
+/** Ajoute des opérations à la file d'envoi (fonctionne hors ligne). */
+function queue(state, ...ops) {
+  const added = ops.map(([entity, action, id, data]) => ({ opId: uid("op"), entity, action, id, data: action === "upsert" ? data : data ?? null }));
+  return { ...state, outbox: [...(state.outbox || []), ...added] };
+}
+
+/** Données touchées par des opérations pas encore confirmées : on ne les écrase pas avec la version serveur. */
+function pendingKeys(outbox) {
+  const keys = new Set();
+  for (const op of outbox) {
+    if (op.entity === "payment") keys.add(`installment:${op.data?.installmentId}`);
+    else if (op.entity === "movement") keys.add(`product:${op.data?.productId}`);
+    else keys.add(`${op.entity}:${op.id}`);
+  }
+  return keys;
+}
+
+/** Applique les changements reçus du serveur sur l'état local. */
+function applyChanges(state, changes, pending) {
+  const next = { ...state };
+  for (const change of changes) {
+    const key = COLLECTIONS[change.entity];
+    if (!key || pending.has(`${change.entity}:${change.id}`)) continue;
+    const list = next[key] || [];
+
+    if (change.entity === "category") {
+      next[key] = change.action === "delete" ? list.filter((c) => c !== change.id) : list.includes(change.data) ? list : [...list, change.data];
+    } else if (change.action === "delete") {
+      next[key] = list.filter((record) => record.id !== change.id);
+    } else {
+      next[key] = list.some((record) => record.id === change.id) ? list.map((record) => (record.id === change.id ? change.data : record)) : [change.data, ...list];
+    }
+  }
+  return next;
+}
+
 export function StoreProvider({ children }) {
-  const [state, setState] = useState(loadState);
-  const [sessionUserId, setSessionUserId] = useState(loadSession);
+  const { company, user } = useAuth();
+
+  if (!company || !user) {
+    return <StoreContext.Provider value={null}>{children}</StoreContext.Provider>;
+  }
+  // key : changer d'entreprise recharge entièrement les données
+  return (
+    <CompanyStoreLoader key={company.id} companyId={company.id}>
+      {children}
+    </CompanyStoreLoader>
+  );
+}
+
+function CompanyStoreLoader({ companyId, children }) {
+  const { api } = useAuth();
+  const [initialState, setInitialState] = useState(null);
 
   useEffect(() => {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-    } catch {
-      // stockage plein ou indisponible : l'application continue en mémoire
-    }
+    let active = true;
+    loadCompanyState(companyId, api).then((loaded) => active && setInitialState(loaded));
+    requestPersistentStorage();
+    return () => {
+      active = false;
+    };
+  }, [companyId, api]);
+
+  if (!initialState) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <div className="h-8 w-8 animate-spin rounded-full border-[3px] border-slate-200 border-t-brand-600" />
+      </div>
+    );
+  }
+
+  return (
+    <LoadedStoreProvider companyId={companyId} initialState={initialState}>
+      {children}
+    </LoadedStoreProvider>
+  );
+}
+
+function LoadedStoreProvider({ companyId, initialState, children }) {
+  const { user: currentUser, company, api, saveCompany, setUser, rememberPassword, logout } = useAuth();
+  const { online } = useConnectivity();
+  const [state, setState] = useState(initialState);
+  const [syncing, setSyncing] = useState(false);
+  const [lastSyncAt, setLastSyncAt] = useState(null);
+  const saveFailed = useRef(false);
+
+  useEffect(() => {
+    writeValue(storeKey(companyId), state)
+      .then(() => {
+        saveFailed.current = false;
+      })
+      .catch(() => {
+        // stockage plein ou indisponible : l'application continue en mémoire
+        if (!saveFailed.current) toast.error("Enregistrement local impossible : exportez une sauvegarde depuis les paramètres.");
+        saveFailed.current = true;
+      });
+  }, [state, companyId]);
+
+  // Comptes de l'entreprise : la liste fait foi côté serveur, gardée en cache pour le hors ligne
+  useEffect(() => {
+    if (!online) return;
+    api("GET", "/users").then((result) => {
+      if (result.ok) setState((prev) => ({ ...prev, users: result.data }));
+    });
+  }, [online, api]);
+
+  // ---------- Synchronisation ----------
+  const stateRef = useRef(state);
+  const inFlight = useRef(false);
+  useEffect(() => {
+    stateRef.current = state;
   }, [state]);
 
-  useEffect(() => {
+  const syncNow = useCallback(async () => {
+    if (inFlight.current) return;
+    inFlight.current = true;
+    setSyncing(true);
     try {
-      if (sessionUserId) localStorage.setItem(SESSION_KEY, sessionUserId);
-      else localStorage.removeItem(SESSION_KEY);
-    } catch {
-      // ignore
-    }
-  }, [sessionUserId]);
+      const ops = (stateRef.current.outbox || []).slice(0, SYNC_BATCH);
+      const result = await api("POST", "/sync", { cursor: stateRef.current.syncCursor ?? null, ops });
+      if (result.network || result.status === 401) return; // on réessaiera au retour du réseau
 
-  const currentUser = useMemo(
-    () => state.users.find((user) => user.id === sessionUserId && user.status === "actif") || null,
-    [state.users, sessionUserId]
+      const sent = new Set(ops.map((op) => op.opId));
+      if (!result.ok) {
+        // File refusée en bloc (données invalides) : on l'abandonne pour ne pas bloquer les suivantes
+        if (ops.length) {
+          toast.error(`Synchronisation refusée : ${result.error}`);
+          setState((prev) => ({ ...prev, outbox: prev.outbox.filter((op) => !sent.has(op.opId)) }));
+        }
+        return;
+      }
+
+      const { rejected = [], conflicts = [], changes = [], cursor, reset } = result.data;
+      if (rejected.length) {
+        toast.error(rejected.length === 1 ? `Modification refusée : ${rejected[0].error}` : `${rejected.length} modifications refusées. Ex. : ${rejected[0].error}`);
+      }
+      conflicts.forEach((c) => toast.error(`Stock insuffisant : « ${c.name} » est à ${c.stock}. Une vente a dépassé le stock réel.`, { id: `conflict-${c.productId}`, duration: 8000 }));
+
+      if (reset) {
+        // Trop de changements ou appareil jamais synchronisé : on recharge tout depuis le serveur
+        const fresh = await fetchCompanyState(api);
+        if (fresh) {
+          setState((prev) => ({ ...fresh, users: fresh.users || prev.users, deviceCode: prev.deviceCode, outbox: prev.outbox.filter((op) => !sent.has(op.opId)) }));
+        }
+      } else {
+        setState((prev) => {
+          const outbox = (prev.outbox || []).filter((op) => !sent.has(op.opId));
+          return { ...applyChanges(prev, changes, pendingKeys(outbox)), outbox, syncCursor: cursor };
+        });
+      }
+      setLastSyncAt(new Date());
+    } finally {
+      inFlight.current = false;
+      setSyncing(false);
+    }
+  }, [api]);
+
+  const pendingOps = state.outbox?.length || 0;
+  useEffect(() => {
+    if (online && pendingOps) syncNow();
+  }, [online, pendingOps, syncNow]);
+
+  useEffect(() => {
+    if (!online) return undefined;
+    syncNow();
+    const interval = setInterval(syncNow, SYNC_INTERVAL);
+    return () => clearInterval(interval);
+  }, [online, syncNow]);
+
+  // Identité et paramètres : ceux de l'entreprise, jamais ceux d'une autre
+  const settings = useMemo(
+    () => ({ ...DEFAULT_SETTINGS, ...company.settings, shopName: company.name, logo: company.logo || "" }),
+    [company]
   );
+  const visibleState = useMemo(() => ({ ...state, settings }), [state, settings]);
+  const sync = useMemo(() => ({ pending: pendingOps, syncing, lastSyncAt, syncNow }), [pendingOps, syncing, lastSyncAt, syncNow]);
 
   const update = useCallback((recipe) => setState((prev) => recipe(prev)), []);
 
   const actions = useMemo(() => {
-    const userName = () => state.users.find((u) => u.id === sessionUserId)?.name || "Système";
+    const userName = () => currentUser?.name || "Système";
+    const code = state.deviceCode;
+    const replaceUser = (saved) =>
+      update((prev) => ({ ...prev, users: prev.users.some((u) => u.id === saved.id) ? prev.users.map((u) => (u.id === saved.id ? saved : u)) : [...prev.users, saved] }));
 
     const movement = (product, type, qty, reason, reference) => ({
       id: uid("mv"),
@@ -78,50 +299,41 @@ export function StoreProvider({ children }) {
       date: new Date().toISOString(),
       userName: userName(),
     });
+    const movementOp = (m) => ["movement", "upsert", m.id, m];
 
     return {
-      // ---------- Authentification ----------
-      login(email, password) {
-        const user = state.users.find((u) => u.email.toLowerCase() === email.trim().toLowerCase());
-        if (!user || user.password !== password) return { ok: false, error: "Email ou mot de passe incorrect." };
-        if (user.status !== "actif") return { ok: false, error: "Ce compte est désactivé. Contactez l'administrateur." };
-        setSessionUserId(user.id);
-        return { ok: true, user };
-      },
-      logout() {
-        setSessionUserId(null);
-      },
-      register({ name, email, phone, password, shop }) {
-        if (state.users.some((u) => u.email.toLowerCase() === email.trim().toLowerCase())) {
-          return { ok: false, error: "Un compte existe déjà avec cet email." };
-        }
-        const user = { id: uid("u"), name, email: email.trim(), phone, password, role: "admin", shop: shop || "Siège", status: "actif", createdAt: new Date().toISOString() };
-        update((prev) => ({ ...prev, users: [...prev.users, user], settings: { ...prev.settings, shopName: shop || prev.settings.shopName } }));
-        setSessionUserId(user.id);
-        return { ok: true, user };
-      },
+      // ---------- Session ----------
+      logout,
 
-      // ---------- Utilisateurs / vendeurs ----------
-      saveUser(data) {
-        const email = data.email.trim().toLowerCase();
-        if (state.users.some((u) => u.email.toLowerCase() === email && u.id !== data.id)) {
-          return { ok: false, error: "Cet email est déjà utilisé." };
+      // ---------- Utilisateurs / vendeurs (gérés par le serveur : connexion requise) ----------
+      async saveUser(data) {
+        const isSelf = data.id && data.id === currentUser?.id;
+        const fields = { name: data.name, email: data.email, phone: data.phone ?? "", shop: data.shop ?? "" };
+        let result;
+        if (isSelf) {
+          result = await api("PUT", "/me", fields);
+        } else if (data.id) {
+          // eslint-disable-next-line no-unused-vars
+          const { id, createdAt, ...patch } = data;
+          result = await api("PUT", `/users/${data.id}`, patch);
+        } else {
+          result = await api("POST", "/users", { role: "seller", status: "actif", ...data });
         }
-        update((prev) => {
-          if (data.id) {
-            return { ...prev, users: prev.users.map((u) => (u.id === data.id ? { ...u, ...data, password: data.password || u.password } : u)) };
-          }
-          return { ...prev, users: [...prev.users, { role: "seller", status: "actif", ...data, id: uid("u"), createdAt: new Date().toISOString() }] };
-        });
+        if (!result.ok) return { ok: false, error: result.network ? "Connexion internet requise pour gérer les comptes." : result.error };
+        replaceUser(result.data);
+        if (isSelf) setUser(result.data);
+        return { ok: true, user: result.data };
+      },
+      async deleteUser(id) {
+        const result = await api("DELETE", `/users/${id}`);
+        if (!result.ok) return { ok: false, error: result.network ? "Connexion internet requise pour gérer les comptes." : result.error };
+        update((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id) }));
         return { ok: true };
       },
-      deleteUser(id) {
-        update((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id) }));
-      },
-      changePassword(id, current, next) {
-        const user = state.users.find((u) => u.id === id);
-        if (!user || user.password !== current) return { ok: false, error: "Le mot de passe actuel est incorrect." };
-        update((prev) => ({ ...prev, users: prev.users.map((u) => (u.id === id ? { ...u, password: next } : u)) }));
+      async changePassword(id, current, next) {
+        const result = await api("PUT", "/me/password", { current_password: current, password: next });
+        if (!result.ok) return { ok: false, error: result.network ? "Connexion internet requise pour changer de mot de passe." : result.error };
+        await rememberPassword(next);
         return { ok: true };
       },
 
@@ -130,98 +342,116 @@ export function StoreProvider({ children }) {
         update((prev) => {
           if (data.id) {
             const before = prev.products.find((p) => p.id === data.id);
-            const products = prev.products.map((p) => (p.id === data.id ? { ...p, ...data } : p));
+            const product = { ...before, ...data };
+            const products = prev.products.map((p) => (p.id === data.id ? product : p));
             const diff = Number(data.stock) - (before?.stock ?? 0);
-            const stockMovements = diff !== 0 && before
-              ? [movement({ ...before, ...data }, diff > 0 ? "in" : "out", Math.abs(diff), "Correction d'inventaire", "INV"), ...prev.stockMovements]
-              : prev.stockMovements;
-            return { ...prev, products, stockMovements };
+            const correction = diff !== 0 && before ? movement(product, diff > 0 ? "in" : "out", Math.abs(diff), "Correction d'inventaire", "INV") : null;
+            const next = { ...prev, products, stockMovements: correction ? [correction, ...prev.stockMovements] : prev.stockMovements };
+            return queue(next, ["product", "upsert", product.id, product], ...(correction ? [movementOp(correction)] : []));
           }
-          const nextIndex = prev.products.length + 1;
-          const product = { image: "", description: "", ...data, id: uid("p"), sku: data.sku || `DYM-${pad(nextIndex, 4)}`, createdAt: new Date().toISOString() };
-          const stockMovements = product.stock > 0
-            ? [movement(product, "in", product.stock, "Stock initial", "CRÉATION"), ...prev.stockMovements]
-            : prev.stockMovements;
-          return { ...prev, products: [product, ...prev.products], stockMovements };
+          const product = { image: "", description: "", ...data, id: uid("p"), sku: data.sku || `${code}-${pad(prev.products.length + 1, 4)}`, createdAt: new Date().toISOString() };
+          const initial = product.stock > 0 ? movement(product, "in", product.stock, "Stock initial", "CRÉATION") : null;
+          const next = { ...prev, products: [product, ...prev.products], stockMovements: initial ? [initial, ...prev.stockMovements] : prev.stockMovements };
+          return queue(next, ["product", "upsert", product.id, product], ...(initial ? [movementOp(initial)] : []));
         });
       },
       deleteProduct(id) {
-        update((prev) => ({ ...prev, products: prev.products.filter((p) => p.id !== id) }));
+        update((prev) => queue({ ...prev, products: prev.products.filter((p) => p.id !== id) }, ["product", "delete", id]));
       },
       adjustStock(productId, type, qty, reason) {
         update((prev) => {
           const product = prev.products.find((p) => p.id === productId);
           if (!product) return prev;
-          const counter = prev.counters.adjustment + 1;
+          const prefix = `AJ-${code}-`;
+          const reference = `${prefix}${pad(nextNumber(prev.stockMovements.map((m) => m.reference), prefix), 3)}`;
           const delta = type === "in" ? qty : -Math.min(qty, product.stock);
-          return {
+          const move = movement(product, type, Math.abs(delta), reason, reference);
+          const next = {
             ...prev,
-            counters: { ...prev.counters, adjustment: counter },
             products: prev.products.map((p) => (p.id === productId ? { ...p, stock: p.stock + delta } : p)),
-            stockMovements: [movement(product, type, Math.abs(delta), reason, `AJ-${pad(counter, 4)}`), ...prev.stockMovements],
+            stockMovements: [move, ...prev.stockMovements],
           };
+          return queue(next, movementOp(move));
         });
       },
       addCategory(name) {
-        update((prev) => ({ ...prev, categories: [...prev.categories, name] }));
+        update((prev) => queue({ ...prev, categories: [...prev.categories, name] }, ["category", "upsert", name, { name }]));
       },
       renameCategory(oldName, newName) {
-        update((prev) => ({
-          ...prev,
-          categories: prev.categories.map((c) => (c === oldName ? newName : c)),
-          products: prev.products.map((p) => (p.category === oldName ? { ...p, category: newName } : p)),
-        }));
+        update((prev) => {
+          const moved = prev.products.filter((p) => p.category === oldName).map((p) => ({ ...p, category: newName }));
+          const next = {
+            ...prev,
+            categories: prev.categories.map((c) => (c === oldName ? newName : c)),
+            products: prev.products.map((p) => moved.find((m) => m.id === p.id) || p),
+          };
+          return queue(next, ["category", "upsert", newName, { name: newName }], ...moved.map((p) => ["product", "upsert", p.id, p]), ["category", "delete", oldName]);
+        });
       },
       deleteCategory(name) {
-        update((prev) => ({
-          ...prev,
-          categories: prev.categories.filter((c) => c !== name),
-          products: prev.products.map((p) => (p.category === name ? { ...p, category: "Autre" } : p)),
-        }));
+        update((prev) => {
+          const moved = prev.products.filter((p) => p.category === name).map((p) => ({ ...p, category: "Autre" }));
+          const next = {
+            ...prev,
+            categories: prev.categories.filter((c) => c !== name),
+            products: prev.products.map((p) => moved.find((m) => m.id === p.id) || p),
+          };
+          const ensureOther = moved.length ? [["category", "upsert", "Autre", { name: "Autre" }]] : [];
+          return queue(next, ...ensureOther, ...moved.map((p) => ["product", "upsert", p.id, p]), ["category", "delete", name]);
+        });
       },
 
       // ---------- Fournisseurs ----------
       saveSupplier(data) {
-        update((prev) =>
-          data.id
-            ? { ...prev, suppliers: prev.suppliers.map((s) => (s.id === data.id ? { ...s, ...data } : s)) }
-            : { ...prev, suppliers: [{ ...data, id: uid("s") }, ...prev.suppliers] }
-        );
+        update((prev) => {
+          const existing = data.id ? prev.suppliers.find((s) => s.id === data.id) : null;
+          const supplier = existing ? { ...existing, ...data } : { ...data, id: uid("s") };
+          const suppliers = existing ? prev.suppliers.map((s) => (s.id === supplier.id ? supplier : s)) : [supplier, ...prev.suppliers];
+          return queue({ ...prev, suppliers }, ["supplier", "upsert", supplier.id, supplier]);
+        });
       },
       deleteSupplier(id) {
-        update((prev) => ({
-          ...prev,
-          suppliers: prev.suppliers.filter((s) => s.id !== id),
-          products: prev.products.map((p) => (p.supplierId === id ? { ...p, supplierId: "" } : p)),
-        }));
+        update((prev) => {
+          const detached = prev.products.filter((p) => p.supplierId === id).map((p) => ({ ...p, supplierId: "" }));
+          const next = {
+            ...prev,
+            suppliers: prev.suppliers.filter((s) => s.id !== id),
+            products: prev.products.map((p) => detached.find((d) => d.id === p.id) || p),
+          };
+          return queue(next, ...detached.map((p) => ["product", "upsert", p.id, p]), ["supplier", "delete", id]);
+        });
       },
 
       // ---------- Approvisionnements ----------
       savePurchaseOrder(data) {
         if (data.id) {
-          update((prev) => ({ ...prev, purchaseOrders: prev.purchaseOrders.map((o) => (o.id === data.id ? { ...o, ...data } : o)) }));
+          update((prev) => {
+            const order = { ...prev.purchaseOrders.find((o) => o.id === data.id), ...data };
+            return queue({ ...prev, purchaseOrders: prev.purchaseOrders.map((o) => (o.id === data.id ? order : o)) }, ["purchaseOrder", "upsert", order.id, order]);
+          });
           return data.id;
         }
-        const counter = state.counters.purchaseOrder + 1;
-        const id = `BC-${pad(counter, 4)}`;
-        update((prev) => {
-          return {
-            ...prev,
-            counters: { ...prev.counters, purchaseOrder: counter },
-            purchaseOrders: [{ status: "draft", receivedAt: null, ...data, id, createdAt: new Date().toISOString() }, ...prev.purchaseOrders],
-          };
-        });
+        const prefix = `BC-${code}-`;
+        const id = `${prefix}${pad(nextNumber(state.purchaseOrders.map((o) => o.id), prefix), 3)}`;
+        const order = { status: "draft", receivedAt: null, ...data, id, createdAt: new Date().toISOString() };
+        update((prev) => queue({ ...prev, purchaseOrders: [order, ...prev.purchaseOrders] }, ["purchaseOrder", "upsert", id, order]));
         return id;
       },
       setPurchaseOrderStatus(id, status) {
         update((prev) => {
           const order = prev.purchaseOrders.find((o) => o.id === id);
           if (!order || order.status === "received") return prev;
+          const updatedOrder = { ...order, status, receivedAt: status === "received" ? new Date().toISOString() : order.receivedAt };
           let { products, stockMovements } = prev;
+          const ops = [["purchaseOrder", "upsert", id, updatedOrder]];
           if (status === "received") {
+            const costChanged = [];
             products = products.map((p) => {
               const line = order.items.find((item) => item.productId === p.id);
-              return line ? { ...p, stock: p.stock + line.qty, cost: line.cost || p.cost } : p;
+              if (!line) return p;
+              const next = { ...p, stock: p.stock + line.qty, cost: line.cost || p.cost };
+              if (next.cost !== p.cost) costChanged.push(next);
+              return next;
             });
             const moves = order.items
               .map((item) => {
@@ -230,34 +460,32 @@ export function StoreProvider({ children }) {
               })
               .filter(Boolean);
             stockMovements = [...moves, ...stockMovements];
+            ops.push(...costChanged.map((p) => ["product", "upsert", p.id, p]), ...moves.map(movementOp));
           }
-          return {
-            ...prev,
-            products,
-            stockMovements,
-            purchaseOrders: prev.purchaseOrders.map((o) =>
-              o.id === id ? { ...o, status, receivedAt: status === "received" ? new Date().toISOString() : o.receivedAt } : o
-            ),
-          };
+          const next = { ...prev, products, stockMovements, purchaseOrders: prev.purchaseOrders.map((o) => (o.id === id ? updatedOrder : o)) };
+          return queue(next, ...ops);
         });
       },
       deletePurchaseOrder(id) {
-        update((prev) => ({ ...prev, purchaseOrders: prev.purchaseOrders.filter((o) => o.id !== id) }));
+        update((prev) => queue({ ...prev, purchaseOrders: prev.purchaseOrders.filter((o) => o.id !== id) }, ["purchaseOrder", "delete", id]));
       },
 
       // ---------- Clients ----------
       saveCustomer(data) {
         if (data.id) {
-          update((prev) => ({ ...prev, customers: prev.customers.map((c) => (c.id === data.id ? { ...c, ...data } : c)) }));
+          update((prev) => {
+            const customer = { ...prev.customers.find((c) => c.id === data.id), ...data };
+            return queue({ ...prev, customers: prev.customers.map((c) => (c.id === data.id ? customer : c)) }, ["customer", "upsert", customer.id, customer]);
+          });
           return data.id;
         }
         const id = uid("c");
         const customer = { notes: "", ...data, id, createdAt: new Date().toISOString() };
-        update((prev) => ({ ...prev, customers: [customer, ...prev.customers] }));
+        update((prev) => queue({ ...prev, customers: [customer, ...prev.customers] }, ["customer", "upsert", id, customer]));
         return id;
       },
       deleteCustomer(id) {
-        update((prev) => ({ ...prev, customers: prev.customers.filter((c) => c.id !== id) }));
+        update((prev) => queue({ ...prev, customers: prev.customers.filter((c) => c.id !== id) }, ["customer", "delete", id]));
       },
 
       // ---------- Ventes ----------
@@ -266,8 +494,8 @@ export function StoreProvider({ children }) {
        * crée le dossier de paiement échelonné si vente à crédit.
        */
       createSale({ items, customerId, customerName, discount = 0, method, mode, deposit = 0, dueDate, sellerId }) {
-        const saleCounter = state.counters.sale + 1;
-        const saleId = `V-${pad(saleCounter, 5)}`;
+        const salePrefix = `V-${code}-`;
+        const saleId = `${salePrefix}${pad(nextNumber(state.sales.map((s) => s.id), salePrefix), 4)}`;
         const subtotal = items.reduce((sum, item) => sum + item.qty * item.price, 0);
         const total = Math.max(0, subtotal - discount);
         const now = new Date().toISOString();
@@ -276,8 +504,8 @@ export function StoreProvider({ children }) {
           return { productId: item.productId, name: product?.name ?? item.name, qty: item.qty, price: item.price, cost: product?.cost ?? 0 };
         });
         const paid = mode === "credit" ? Math.min(total, deposit) : total;
-        const installmentCounter = mode === "credit" ? state.counters.installment + 1 : state.counters.installment;
-        const installmentId = mode === "credit" ? `TR-${installmentCounter}` : null;
+        const installmentPrefix = `TR-${code}-`;
+        const installmentId = mode === "credit" ? `${installmentPrefix}${nextNumber(state.installments.map((i) => i.id), installmentPrefix)}` : null;
         const depositPayment = { id: uid("pay"), date: now, amount: paid, method, note: "Acompte" };
 
         const sale = {
@@ -298,24 +526,25 @@ export function StoreProvider({ children }) {
         };
 
         update((prev) => {
+          const ops = [["sale", "upsert", saleId, sale]];
           let installments = prev.installments;
           if (mode === "credit") {
-            installments = [
-              {
-                id: installmentId,
-                saleId,
-                customerId,
-                customerName,
-                label: lines.map((line) => line.name).join(", "),
-                total,
-                payments: paid > 0 ? [depositPayment] : [],
-                dueDate,
-                sellerId,
-                createdAt: now,
-                notes: "",
-              },
-              ...installments,
-            ];
+            const installment = {
+              id: installmentId,
+              saleId,
+              customerId,
+              customerName,
+              label: lines.map((line) => line.name).join(", "),
+              total,
+              payments: paid > 0 ? [depositPayment] : [],
+              dueDate,
+              sellerId,
+              createdAt: now,
+              notes: "",
+            };
+            installments = [installment, ...installments];
+            ops.push(["installment", "upsert", installmentId, installment]);
+            if (paid > 0) ops.push(["payment", "upsert", depositPayment.id, { ...depositPayment, installmentId }]);
           }
 
           const products = prev.products.map((p) => {
@@ -333,15 +562,9 @@ export function StoreProvider({ children }) {
             date: now,
             userName: prev.users.find((u) => u.id === sellerId)?.name || "Vendeur",
           }));
+          ops.push(...moves.map(movementOp));
 
-          return {
-            ...prev,
-            counters: { ...prev.counters, sale: saleCounter, installment: installmentCounter },
-            sales: [sale, ...prev.sales],
-            products,
-            installments,
-            stockMovements: [...moves, ...prev.stockMovements],
-          };
+          return queue({ ...prev, sales: [sale, ...prev.sales], products, installments, stockMovements: [...moves, ...prev.stockMovements] }, ...ops);
         });
         return sale;
       },
@@ -350,6 +573,7 @@ export function StoreProvider({ children }) {
         update((prev) => {
           const sale = prev.sales.find((s) => s.id === saleId);
           if (!sale || sale.status === "cancelled") return prev;
+          const cancelled = { ...sale, status: "cancelled", cancelReason: reason, cancelledAt: new Date().toISOString() };
           const products = prev.products.map((p) => {
             const line = sale.items.find((l) => l.productId === p.id);
             return line ? { ...p, stock: p.stock + line.qty } : p;
@@ -357,119 +581,141 @@ export function StoreProvider({ children }) {
           const moves = sale.items
             .filter((line) => prev.products.some((p) => p.id === line.productId))
             .map((line) => ({ id: uid("mv"), productId: line.productId, productName: line.name, type: "in", qty: line.qty, reason: `Retour — ${reason}`, reference: sale.id, date: new Date().toISOString(), userName: userName() }));
-          return {
+          const closedInstallments = prev.installments.filter((i) => i.saleId === saleId).map((i) => ({ ...i, cancelled: true }));
+          const next = {
             ...prev,
             products,
             stockMovements: [...moves, ...prev.stockMovements],
-            sales: prev.sales.map((s) => (s.id === saleId ? { ...s, status: "cancelled", cancelReason: reason, cancelledAt: new Date().toISOString() } : s)),
-            installments: prev.installments.map((i) => (i.saleId === saleId ? { ...i, cancelled: true } : i)),
+            sales: prev.sales.map((s) => (s.id === saleId ? cancelled : s)),
+            installments: prev.installments.map((i) => closedInstallments.find((c) => c.id === i.id) || i),
           };
+          return queue(next, ["sale", "upsert", saleId, cancelled], ...moves.map(movementOp), ...closedInstallments.map((i) => ["installment", "upsert", i.id, i]));
         });
       },
 
       // ---------- Paiements échelonnés ----------
       createInstallment(data) {
         update((prev) => {
-          const counter = prev.counters.installment + 1;
+          const prefix = `TR-${code}-`;
+          const id = `${prefix}${nextNumber(prev.installments.map((i) => i.id), prefix)}`;
           const payments = data.deposit > 0 ? [{ id: uid("pay"), date: new Date().toISOString(), amount: data.deposit, method: data.method || "cash", note: "Acompte" }] : [];
-          return {
-            ...prev,
-            counters: { ...prev.counters, installment: counter },
-            installments: [
-              { id: `TR-${counter}`, saleId: null, customerId: data.customerId, customerName: data.customerName, label: data.label, total: data.total, payments, dueDate: data.dueDate, sellerId: data.sellerId, createdAt: new Date().toISOString(), notes: data.notes || "" },
-              ...prev.installments,
-            ],
-          };
+          const installment = { id, saleId: null, customerId: data.customerId, customerName: data.customerName, label: data.label, total: data.total, payments, dueDate: data.dueDate, sellerId: data.sellerId, createdAt: new Date().toISOString(), notes: data.notes || "" };
+          return queue(
+            { ...prev, installments: [installment, ...prev.installments] },
+            ["installment", "upsert", id, installment],
+            ...payments.map((p) => ["payment", "upsert", p.id, { ...p, installmentId: id }])
+          );
         });
       },
       updateInstallment(id, patch) {
-        update((prev) => ({ ...prev, installments: prev.installments.map((i) => (i.id === id ? { ...i, ...patch } : i)) }));
+        update((prev) => {
+          const installment = { ...prev.installments.find((i) => i.id === id), ...patch };
+          return queue({ ...prev, installments: prev.installments.map((i) => (i.id === id ? installment : i)) }, ["installment", "upsert", id, installment]);
+        });
       },
       addInstallmentPayment(id, { amount, method, note, date }) {
-        update((prev) => ({
-          ...prev,
-          installments: prev.installments.map((i) =>
-            i.id === id ? { ...i, payments: [...i.payments, { id: uid("pay"), date: date || new Date().toISOString(), amount, method, note }] } : i
-          ),
-          sales: prev.sales.map((s) => (s.installmentId === id ? { ...s, paid: (s.paid || 0) + amount } : s)),
-        }));
+        const payment = { id: uid("pay"), date: date || new Date().toISOString(), amount, method, note };
+        update((prev) =>
+          queue(
+            {
+              ...prev,
+              installments: prev.installments.map((i) => (i.id === id ? { ...i, payments: [...i.payments, payment] } : i)),
+              sales: prev.sales.map((s) => (s.installmentId === id ? { ...s, paid: (s.paid || 0) + amount } : s)),
+            },
+            ["payment", "upsert", payment.id, { ...payment, installmentId: id }]
+          )
+        );
       },
       removeInstallmentPayment(id, paymentId) {
         update((prev) => {
           const payment = prev.installments.find((i) => i.id === id)?.payments.find((p) => p.id === paymentId);
-          return {
+          const next = {
             ...prev,
             installments: prev.installments.map((i) => (i.id === id ? { ...i, payments: i.payments.filter((p) => p.id !== paymentId) } : i)),
             sales: prev.sales.map((s) => (s.installmentId === id && payment ? { ...s, paid: Math.max(0, (s.paid || 0) - payment.amount) } : s)),
           };
+          return queue(next, ["payment", "delete", paymentId, { installmentId: id }]);
         });
       },
 
       // ---------- Maintenance ----------
       saveMaintenanceTask(data) {
-        update((prev) =>
-          data.id
-            ? { ...prev, maintenanceTasks: prev.maintenanceTasks.map((t) => (t.id === data.id ? { ...t, ...data } : t)) }
-            : { ...prev, maintenanceTasks: [{ source: "admin", reportedBy: null, ...data, id: uid("mt") }, ...prev.maintenanceTasks] }
-        );
+        update((prev) => {
+          const existing = data.id ? prev.maintenanceTasks.find((t) => t.id === data.id) : null;
+          const task = existing
+            ? { ...existing, ...data }
+            : { source: "admin", reportedBy: null, technicianId: null, assignedTo: "", costEstimate: 0, ...data, id: data.id || uid("mt") };
+          const maintenanceTasks = existing ? prev.maintenanceTasks.map((t) => (t.id === task.id ? task : t)) : [task, ...prev.maintenanceTasks];
+          return queue({ ...prev, maintenanceTasks }, ["task", "upsert", task.id, task]);
+        });
       },
       deleteMaintenanceTask(id) {
-        update((prev) => ({ ...prev, maintenanceTasks: prev.maintenanceTasks.filter((t) => t.id !== id) }));
+        update((prev) => queue({ ...prev, maintenanceTasks: prev.maintenanceTasks.filter((t) => t.id !== id) }, ["task", "delete", id]));
       },
       /** Clôture une intervention et l'archive dans l'historique avec son coût réel */
       completeMaintenanceTask(id, { cost, technician, note }) {
         update((prev) => {
           const task = prev.maintenanceTasks.find((t) => t.id === id);
           if (!task) return prev;
-          return {
-            ...prev,
-            maintenanceTasks: prev.maintenanceTasks.map((t) => (t.id === id ? { ...t, status: "Terminé" } : t)),
-            maintenanceHistory: [
-              { id: uid("mh"), product: task.product, action: task.task, technician: technician || task.assignedTo || "—", date: new Date().toISOString(), cost: Number(cost) || 0, note: note || "" },
-              ...prev.maintenanceHistory,
-            ],
+          const done = { ...task, status: "Terminé" };
+          const entry = {
+            id: uid("mh"),
+            product: task.product,
+            action: task.task,
+            technician: technician || task.assignedTo || "—",
+            technicianId: task.technicianId || (currentUser?.role === "technician" ? currentUser.id : null),
+            date: new Date().toISOString(),
+            cost: Number(cost) || 0,
+            note: note || "",
           };
+          const next = {
+            ...prev,
+            maintenanceTasks: prev.maintenanceTasks.map((t) => (t.id === id ? done : t)),
+            maintenanceHistory: [entry, ...prev.maintenanceHistory],
+          };
+          return queue(next, ["task", "upsert", id, done], ["history", "upsert", entry.id, entry]);
         });
       },
       addMaintenanceHistory(data) {
-        update((prev) => ({ ...prev, maintenanceHistory: [{ ...data, id: uid("mh") }, ...prev.maintenanceHistory] }));
+        const entry = { technicianId: null, ...data, id: uid("mh") };
+        update((prev) => queue({ ...prev, maintenanceHistory: [entry, ...prev.maintenanceHistory] }, ["history", "upsert", entry.id, entry]));
       },
       deleteMaintenanceHistory(id) {
-        update((prev) => ({ ...prev, maintenanceHistory: prev.maintenanceHistory.filter((h) => h.id !== id) }));
+        update((prev) => queue({ ...prev, maintenanceHistory: prev.maintenanceHistory.filter((h) => h.id !== id) }, ["history", "delete", id]));
       },
       saveTechSheet(data) {
-        update((prev) =>
-          data.id
-            ? { ...prev, techSheets: prev.techSheets.map((s) => (s.id === data.id ? { ...s, ...data } : s)) }
-            : { ...prev, techSheets: [{ ...data, id: uid("ts") }, ...prev.techSheets] }
-        );
+        update((prev) => {
+          const existing = data.id ? prev.techSheets.find((s) => s.id === data.id) : null;
+          const sheet = existing ? { ...existing, ...data } : { ...data, id: uid("ts") };
+          const techSheets = existing ? prev.techSheets.map((s) => (s.id === sheet.id ? sheet : s)) : [sheet, ...prev.techSheets];
+          return queue({ ...prev, techSheets }, ["sheet", "upsert", sheet.id, sheet]);
+        });
       },
       deleteTechSheet(id) {
-        update((prev) => ({ ...prev, techSheets: prev.techSheets.filter((s) => s.id !== id) }));
+        update((prev) => queue({ ...prev, techSheets: prev.techSheets.filter((s) => s.id !== id) }, ["sheet", "delete", id]));
       },
 
       // ---------- Paramètres & données ----------
+      /** Identité et paramètres de l'entreprise : appliqués tout de suite, envoyés au serveur dès que possible. */
       saveSettings(patch) {
-        update((prev) => ({ ...prev, settings: { ...prev.settings, ...patch } }));
+        return saveCompany({ ...settings, ...patch });
       },
       exportData() {
-        return JSON.stringify(state, null, 2);
+        // eslint-disable-next-line no-unused-vars
+        const { outbox, syncCursor, deviceCode, ...data } = visibleState;
+        return JSON.stringify(data, null, 2);
       },
-      importData(json) {
-        const parsed = JSON.parse(json);
-        if (!parsed || !Array.isArray(parsed.products) || !Array.isArray(parsed.users)) {
-          throw new Error("Fichier de sauvegarde invalide.");
-        }
-        setState({ ...createSeed(), ...parsed, version: STORE_VERSION });
-      },
-      resetData() {
-        setState(createSeed());
-        setSessionUserId(null);
+      /** Remplace les données de cet appareil par celles du serveur. */
+      async resetData() {
+        const fresh = await fetchCompanyState(api);
+        if (!fresh) return { ok: false, error: "Connexion internet requise pour recharger les données." };
+        setState((prev) => ({ ...fresh, deviceCode: prev.deviceCode }));
+        return { ok: true };
       },
     };
-  }, [state, sessionUserId, update]);
+  }, [state, visibleState, settings, currentUser, api, logout, saveCompany, setUser, rememberPassword, update]);
 
-  const value = useMemo(() => ({ state, actions, currentUser }), [state, actions, currentUser]);
+  const value = useMemo(() => ({ state: visibleState, actions, currentUser, sync }), [visibleState, actions, currentUser, sync]);
 
   return <StoreContext.Provider value={value}>{children}</StoreContext.Provider>;
 }
@@ -478,9 +724,4 @@ export function useStore() {
   const context = useContext(StoreContext);
   if (!context) throw new Error("useStore doit être utilisé dans <StoreProvider>");
   return context;
-}
-
-export function useAuth() {
-  const { currentUser, actions } = useStore();
-  return { user: currentUser, login: actions.login, logout: actions.logout, register: actions.register };
 }

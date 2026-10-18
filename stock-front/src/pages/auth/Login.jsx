@@ -23,25 +23,23 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const signIn = (mail, pass) => {
+  const signIn = async (mail, pass) => {
     setError("");
     if (!mail || !pass) {
       setError("Renseignez votre email et votre mot de passe.");
       return;
     }
     setLoading(true);
-    setTimeout(() => {
-      const result = login(mail, pass);
-      setLoading(false);
-      if (!result.ok) {
-        setError(result.error);
-        return;
-      }
-      toast.success(`Bienvenue, ${result.user.name.split(" ")[0]} !`);
-      const home = homePathFor(result.user);
-      const from = location.state?.from;
-      navigate(from && from.startsWith(home) ? from : home, { replace: true });
-    }, 350);
+    const result = await login(mail, pass);
+    setLoading(false);
+    if (!result.ok) {
+      setError(result.error);
+      return;
+    }
+    toast.success(result.offline ? "Connecté hors ligne" : `Bienvenue, ${result.user.name.split(" ")[0]} !`);
+    const home = homePathFor(result.user);
+    const from = location.state?.from;
+    navigate(from && from.startsWith(home) ? from : home, { replace: true });
   };
 
   return (

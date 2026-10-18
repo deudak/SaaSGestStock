@@ -7,7 +7,7 @@ import Button from "../../components/ui/Button";
 import Badge, { Avatar } from "../../components/ui/Badge";
 import { Field, Input } from "../../components/ui/Form";
 import { formatDate, formatMoney } from "../../lib/format";
-import { activeSales, sumBy } from "../../store/selectors";
+import { ROLE_LABELS, activeSales, sumBy } from "../../store/selectors";
 
 export default function Profile() {
   const { state, actions, currentUser } = useStore();
@@ -22,16 +22,16 @@ export default function Profile() {
 
   const dirty = info.name !== currentUser.name || info.email !== currentUser.email || info.phone !== (currentUser.phone || "") || info.shop !== (currentUser.shop || "");
 
-  const saveInfo = (e) => {
+  const saveInfo = async (e) => {
     e.preventDefault();
     if (!info.name.trim()) return toast.error("Le nom est obligatoire.");
     if (!/^\S+@\S+\.\S+$/.test(info.email)) return toast.error("Email invalide.");
-    const result = actions.saveUser({ id: currentUser.id, ...info, name: info.name.trim(), email: info.email.trim() });
+    const result = await actions.saveUser({ id: currentUser.id, ...info, name: info.name.trim(), email: info.email.trim() });
     if (!result.ok) return toast.error(result.error);
     toast.success("Profil mis à jour");
   };
 
-  const savePassword = (e) => {
+  const savePassword = async (e) => {
     e.preventDefault();
     const next = {};
     if (!pwd.current) next.current = "Saisissez votre mot de passe actuel.";
@@ -39,7 +39,7 @@ export default function Profile() {
     if (pwd.next !== pwd.confirm) next.confirm = "Les mots de passe ne correspondent pas.";
     setPwdErrors(next);
     if (Object.keys(next).length) return;
-    const result = actions.changePassword(currentUser.id, pwd.current, pwd.next);
+    const result = await actions.changePassword(currentUser.id, pwd.current, pwd.next);
     if (!result.ok) return setPwdErrors({ current: result.error });
     setPwd({ current: "", next: "", confirm: "" });
     toast.success("Mot de passe modifié");
@@ -56,7 +56,7 @@ export default function Profile() {
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2">
               <h2 className="text-lg font-bold text-slate-900">{currentUser.name}</h2>
-              <Badge tone={currentUser.role === "admin" ? "violet" : "blue"}>{currentUser.role === "admin" ? "Administrateur" : "Vendeur"}</Badge>
+              <Badge tone={currentUser.role === "admin" ? "violet" : currentUser.role === "technician" ? "amber" : "blue"}>{ROLE_LABELS[currentUser.role]}</Badge>
             </div>
             <p className="text-sm text-slate-500">{currentUser.email}</p>
           </div>
@@ -101,7 +101,7 @@ export default function Profile() {
                   <Input type="tel" className="pl-10" value={info.phone} onChange={(e) => setInfo((p) => ({ ...p, phone: e.target.value }))} />
                 </div>
               </Field>
-              <Field label="Point de vente">
+              <Field label={currentUser.role === "technician" ? "Zone d'intervention" : "Point de vente"}>
                 <div className="relative">
                   <FaStore className="pointer-events-none absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" size={11} />
                   <Input className="pl-10" value={info.shop} onChange={(e) => setInfo((p) => ({ ...p, shop: e.target.value }))} disabled={currentUser.role !== "admin"} />

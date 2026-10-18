@@ -1,12 +1,16 @@
 import { Suspense, useCallback, useEffect, useRef, useState } from "react";
 import { Link, NavLink, Outlet, useLocation, useNavigate } from "react-router-dom";
 import { FaBars, FaBell, FaCashRegister, FaChevronDown, FaSignOutAlt, FaTimes, FaUser, FaCog, FaCheckCircle } from "react-icons/fa";
-import logo from "../../assets/logo.svg";
+import BrandLogo from "../ui/BrandLogo";
+import { useBranding } from "../../lib/branding";
 import { useStore } from "../../store/StoreContext";
 import { Avatar } from "../ui/Badge";
 import useClickOutside from "../../lib/useClickOutside";
 import useNotifications from "./useNotifications";
 import { extraTitles } from "../../routes/menus";
+import { useConnectivity } from "../../store/ConnectivityContext";
+import { ROLE_LABELS } from "../../store/selectors";
+import { ConnectivityBadge, OfflineBanner, OfflineLock } from "./OfflineStatus";
 
 const toneDot = {
   red: "bg-rose-50 text-rose-600",
@@ -30,7 +34,7 @@ function Sidebar({ menu, spaceLabel, isOpen, onClose, onLogout }) {
       >
         <div className="flex h-16 items-center justify-between gap-3 px-5">
           <Link to="/" className="flex min-w-0 items-center gap-3" onClick={onClose}>
-            <img src={logo} alt="" className="h-9 w-9 rounded-xl" />
+            <BrandLogo settings={state.settings} />
             <div className="min-w-0">
               <p className="truncate text-[15px] font-bold tracking-tight text-white">{state.settings.shopName}</p>
               <p className="truncate text-[11px] font-medium text-slate-500">{spaceLabel}</p>
@@ -161,7 +165,7 @@ function UserMenu({ user, base, onLogout }) {
         <Avatar name={user.name} size="sm" />
         <span className="hidden text-left md:block">
           <span className="block max-w-[140px] truncate text-[13px] font-semibold leading-tight text-slate-800">{user.name}</span>
-          <span className="block text-[11px] leading-tight text-slate-500">{user.role === "admin" ? "Administrateur" : user.shop || "Vendeur"}</span>
+          <span className="block text-[11px] leading-tight text-slate-500">{user.role === "admin" ? ROLE_LABELS.admin : user.shop || ROLE_LABELS[user.role]}</span>
         </span>
         <FaChevronDown size={10} className="hidden text-slate-400 md:block" />
       </button>
@@ -200,10 +204,13 @@ function PageLoader() {
 
 export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
-  const { currentUser, actions } = useStore();
+  const { state, currentUser, actions, sync } = useStore();
+  const { shopName } = state.settings;
+  useBranding(state.settings);
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef(null);
+  const { expired } = useConnectivity();
 
   const allItems = menu.flatMap((section) => section.items);
   const activeItem =
@@ -212,9 +219,14 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
   const pageTitle = extraTitles[location.pathname] || activeItem?.label || "";
 
   useEffect(() => {
-    document.title = pageTitle ? `${pageTitle} · DYM Stock` : "DYM Stock";
+    document.title = pageTitle ? `${pageTitle} · ${shopName}` : shopName;
     window.scrollTo({ top: 0 });
-  }, [pageTitle, location.pathname]);
+  }, [pageTitle, location.pathname, shopName]);
+
+  // Hors de l'espace connecté (page de connexion), on revient à la marque DYM Stock
+  useEffect(() => () => {
+    document.title = "DYM Stock";
+  }, []);
 
   const handleLogout = () => {
     actions.logout();
@@ -222,6 +234,8 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
   };
 
   const isSeller = currentUser?.role === "seller";
+
+  if (expired) return <OfflineLock onLogout={handleLogout} />;
 
   return (
     <div className="flex min-h-screen bg-slate-50">
@@ -253,9 +267,11 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
                 <FaCashRegister size={13} /> Nouvelle vente
               </Link>
             )}
+            <ConnectivityBadge sync={sync} />
             <NotificationsMenu />
             {currentUser && <UserMenu user={currentUser} base={base} onLogout={handleLogout} />}
           </div>
+          <OfflineBanner />
         </header>
 
         <main ref={mainRef} className="flex-1 px-4 pb-28 pt-5 sm:px-6 lg:px-8 lg:pb-10 lg:pt-7">

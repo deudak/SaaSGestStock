@@ -1,5 +1,6 @@
 import { formatDate, formatDateTime, formatMoney } from "./format";
 import { PAYMENT_LABELS, installmentPaid, installmentRemaining } from "../store/selectors";
+import { brandBase } from "./branding";
 
 const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -7,12 +8,12 @@ const escapeHtml = (value) =>
 const baseStyles = `
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body { font-family: "Inter", "Segoe UI", Arial, sans-serif; color: #0f172a; font-size: 13px; line-height: 1.5; padding: 36px; }
-  .head { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 2px solid #0f172a; }
+  .head { display: flex; justify-content: space-between; gap: 24px; padding-bottom: 20px; border-bottom: 2px solid var(--brand); }
   .brand { font-size: 22px; font-weight: 800; letter-spacing: -0.02em; }
   .muted { color: #64748b; }
   .small { font-size: 11px; }
   .doc-title { font-size: 20px; font-weight: 800; text-align: right; text-transform: uppercase; letter-spacing: 0.04em; }
-  .doc-number { text-align: right; font-weight: 600; color: #2554eb; }
+  .doc-number { text-align: right; font-weight: 600; color: var(--brand); }
   .grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 24px 0; }
   .box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 12px 14px; }
   .label { font-size: 10px; text-transform: uppercase; letter-spacing: 0.08em; color: #64748b; font-weight: 700; margin-bottom: 4px; }
@@ -22,7 +23,7 @@ const baseStyles = `
   .r { text-align: right; } .c { text-align: center; }
   .totals { margin-left: auto; width: 300px; margin-top: 16px; }
   .totals div { display: flex; justify-content: space-between; padding: 5px 0; }
-  .totals .grand { border-top: 2px solid #0f172a; margin-top: 6px; padding-top: 10px; font-size: 16px; font-weight: 800; }
+  .totals .grand { border-top: 2px solid var(--brand); margin-top: 6px; padding-top: 10px; font-size: 16px; font-weight: 800; }
   .stamp { display: inline-block; padding: 3px 10px; border-radius: 999px; font-size: 11px; font-weight: 700; }
   .ok { background: #ecfdf5; color: #047857; } .warn { background: #fffbeb; color: #b45309; } .ko { background: #fef2f2; color: #b91c1c; }
   .foot { margin-top: 40px; padding-top: 14px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #64748b; text-align: center; }
@@ -33,6 +34,7 @@ const baseStyles = `
 function companyBlock(settings) {
   return `
     <div>
+      ${settings.logo ? `<img src="${escapeHtml(settings.logo)}" alt="" style="max-height:64px;max-width:180px;object-fit:contain;margin-bottom:8px;display:block" />` : ""}
       <div class="brand">${escapeHtml(settings.shopName)}</div>
       <div class="muted">${escapeHtml(settings.tagline)}</div>
       <div class="muted small" style="margin-top:6px">${escapeHtml(settings.address)}<br/>${escapeHtml(settings.phone)} · ${escapeHtml(settings.email)}${settings.taxId ? `<br/>NIU : ${escapeHtml(settings.taxId)}` : ""}</div>
@@ -40,19 +42,23 @@ function companyBlock(settings) {
 }
 
 /** Imprime un document HTML via une iframe invisible (pas de pop-up à autoriser). */
-export function printHtml(title, body, extraStyles = "") {
+export function printHtml(title, body, settings, extraStyles = "") {
   const iframe = document.createElement("iframe");
   iframe.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;";
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument;
   doc.open();
-  doc.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>${baseStyles}${extraStyles}</style></head><body>${body}</body></html>`);
+  doc.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>:root { --brand: ${brandBase(settings?.brandColor)}; }${baseStyles}${extraStyles}</style></head><body>${body}</body></html>`);
   doc.close();
-  setTimeout(() => {
-    iframe.contentWindow.focus();
-    iframe.contentWindow.print();
-    setTimeout(() => iframe.remove(), 1000);
-  }, 250);
+  // Attendre le chargement du logo avant d'imprimer
+  const images = [...doc.images].map((img) => (img.complete ? null : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
+  Promise.all(images).then(() =>
+    setTimeout(() => {
+      iframe.contentWindow.focus();
+      iframe.contentWindow.print();
+      setTimeout(() => iframe.remove(), 1000);
+    }, 250)
+  );
 }
 
 export function printSaleInvoice(sale, { settings, customer, seller, installment }) {
@@ -103,7 +109,7 @@ export function printSaleInvoice(sale, { settings, customer, seller, installment
     <div class="sign"><span>Signature du client</span><span>Cachet et signature</span></div>
     <div class="foot">${escapeHtml(settings.invoiceFooter)}</div>`;
 
-  printHtml(`Facture ${sale.id}`, body);
+  printHtml(`Facture ${sale.id}`, body, settings);
 }
 
 /** Ticket de caisse au format 80 mm */
@@ -113,6 +119,7 @@ export function printReceipt(sale, { settings, seller }) {
     .join("");
   const body = `
     <div style="text-align:center">
+      ${settings.logo ? `<img src="${escapeHtml(settings.logo)}" alt="" style="max-height:44px;max-width:60mm;object-fit:contain;margin:0 auto 6px;display:block" />` : ""}
       <div class="brand" style="font-size:16px">${escapeHtml(settings.shopName)}</div>
       <div class="muted small">${escapeHtml(settings.address)}<br/>${escapeHtml(settings.phone)}</div>
     </div>
@@ -130,7 +137,7 @@ export function printReceipt(sale, { settings, seller }) {
     <div class="dash"></div>
     <div class="small muted" style="text-align:center">${escapeHtml(settings.invoiceFooter)}</div>`;
 
-  printHtml(`Ticket ${sale.id}`, body, `
+  printHtml(`Ticket ${sale.id}`, body, settings, `
     body { width: 76mm; padding: 4mm; font-size: 11px; }
     td { padding: 2px 0; border: 0; }
     .dash { border-top: 1px dashed #94a3b8; margin: 8px 0; }
@@ -179,7 +186,7 @@ export function printInstallmentStatement(installment, { settings, customer }) {
     <div class="sign"><span>Signature du client</span><span>Signature du vendeur</span></div>
     <div class="foot">${escapeHtml(settings.invoiceFooter)}</div>`;
 
-  printHtml(`Relevé ${installment.id}`, body);
+  printHtml(`Relevé ${installment.id}`, body, settings);
 }
 
 export function printPurchaseOrder(order, { settings, supplier }) {
@@ -216,5 +223,5 @@ export function printPurchaseOrder(order, { settings, supplier }) {
     <div class="totals"><div class="grand"><span>Total commande</span><span>${formatMoney(total)}</span></div></div>
     ${order.notes ? `<p style="margin-top:20px"><span class="label">Notes</span><br/>${escapeHtml(order.notes)}</p>` : ""}
     <div class="sign"><span>Bon pour accord fournisseur</span><span>Signature acheteur</span></div>`;
-  printHtml(`Bon de commande ${order.id}`, body);
+  printHtml(`Bon de commande ${order.id}`, body, settings);
 }

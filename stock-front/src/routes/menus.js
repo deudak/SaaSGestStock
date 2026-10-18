@@ -13,6 +13,9 @@ import {
   FaCreditCard,
   FaUser,
   FaEllipsisH,
+  FaClipboardCheck,
+  FaHistory,
+  FaFileAlt,
 } from "react-icons/fa";
 
 export const adminMenu = [
@@ -42,7 +45,7 @@ export const adminMenu = [
   {
     title: "Organisation",
     items: [
-      { path: "/admin/vendors", label: "Vendeurs", icon: FaUserTie },
+      { path: "/admin/vendors", label: "Équipe", icon: FaUserTie },
       { path: "/admin/maintenance", label: "Maintenance", icon: FaTools },
       { path: "/admin/settings", label: "Paramètres", icon: FaCog },
     ],
@@ -88,6 +91,28 @@ export const sellerMobileNav = [
   { path: "/seller/sales", label: "Ventes", icon: FaReceipt },
   { path: "/seller/customers", label: "Clients", icon: FaUsers },
   { label: "Plus", icon: FaEllipsisH, openMenu: true },
+];
+
+export const technicianMenu = [
+  {
+    title: "Interventions",
+    items: [
+      { path: "/technician", label: "Mes interventions", icon: FaClipboardCheck, end: true },
+      { path: "/technician/history", label: "Historique", icon: FaHistory },
+      { path: "/technician/equipment", label: "Équipements", icon: FaFileAlt },
+    ],
+  },
+  {
+    title: "Compte",
+    items: [{ path: "/technician/profile", label: "Mon profil", icon: FaUser }],
+  },
+];
+
+export const technicianMobileNav = [
+  { path: "/technician", label: "Interventions", icon: FaClipboardCheck, end: true },
+  { path: "/technician/history", label: "Historique", icon: FaHistory },
+  { path: "/technician/equipment", label: "Équipements", icon: FaFileAlt },
+  { path: "/technician/profile", label: "Profil", icon: FaUser },
 ];
 
 export const extraTitles = {

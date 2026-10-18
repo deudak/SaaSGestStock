@@ -25,6 +25,7 @@ export default function Register() {
   const [form, setForm] = useState({ shop: "", name: "", email: "", phone: "", password: "", confirm: "", terms: false });
   const [errors, setErrors] = useState({});
   const [showPassword, setShowPassword] = useState(false);
+  const [loading, setLoading] = useState(false);
 
   const set = (field) => (event) => {
     const value = event.target.type === "checkbox" ? event.target.checked : event.target.value;
@@ -34,7 +35,7 @@ export default function Register() {
 
   const strength = passwordStrength(form.password);
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
     const next = {};
     if (!form.shop.trim()) next.shop = "Indiquez le nom de votre boutique.";
@@ -46,7 +47,9 @@ export default function Register() {
     setErrors(next);
     if (Object.keys(next).length) return;
 
-    const result = register({ name: form.name.trim(), email: form.email, phone: form.phone, password: form.password, shop: form.shop.trim() });
+    setLoading(true);
+    const result = await register({ name: form.name.trim(), email: form.email, phone: form.phone, password: form.password, shop: form.shop.trim() });
+    setLoading(false);
     if (!result.ok) {
       setErrors({ email: result.error });
       return;
@@ -117,8 +120,8 @@ export default function Register() {
           {errors.terms && <p className="mt-1.5 text-xs font-medium text-rose-600">{errors.terms}</p>}
         </div>
 
-        <Button type="submit" size="lg" className="w-full" iconRight={FaArrowRight}>
-          Créer mon espace
+        <Button type="submit" size="lg" className="w-full" disabled={loading} iconRight={loading ? undefined : FaArrowRight}>
+          {loading ? "Création de votre espace…" : "Créer mon espace"}
         </Button>
       </form>
 

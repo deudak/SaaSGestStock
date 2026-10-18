@@ -1,5 +1,7 @@
+const HOME_BY_ROLE = { admin: "/admin", seller: "/seller", technician: "/technician" };
+
 /** Page d'accueil selon le rôle de l'utilisateur connecté. */
 export function homePathFor(user) {
   if (!user) return "/login";
-  return user.role === "admin" ? "/admin" : "/seller";
+  return HOME_BY_ROLE[user.role] || "/seller";
 }

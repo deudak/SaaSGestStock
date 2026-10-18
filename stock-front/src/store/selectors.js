@@ -224,3 +224,16 @@ export const MAINTENANCE_STATUS = {
 export function openMaintenance(tasks) {
   return tasks.filter((task) => task.status !== "Terminé");
 }
+
+export const ROLE_LABELS = {
+  admin: "Administrateur",
+  seller: "Vendeur",
+  technician: "Maintenancier",
+};
+
+/** Interventions d'un maintenancier (liées à son compte, ou à son nom pour les anciennes). */
+export function isAssignedTo(task, user) {
+  if (!user) return false;
+  if (task.technicianId) return task.technicianId === user.id;
+  return Boolean(task.assignedTo) && task.assignedTo.trim().toLowerCase() === user.name.trim().toLowerCase();
+}
