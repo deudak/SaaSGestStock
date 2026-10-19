@@ -1,7 +1,8 @@
 import { addDays, isSameDay, startOfDay } from "../lib/format";
 import { PAYMENT_METHODS } from "./seed";
+import { locale, localized } from "../i18n/index.js";
 
-export const PAYMENT_LABELS = Object.fromEntries(PAYMENT_METHODS.map((m) => [m.id, m.label]));
+export const PAYMENT_LABELS = localized(Object.fromEntries(PAYMENT_METHODS.map((m) => [m.id, m.label])));
 
 // ---------------- Produits ----------------
 export function productStatus(product) {
@@ -10,11 +11,11 @@ export function productStatus(product) {
   return "ok";
 }
 
-export const PRODUCT_STATUS = {
+export const PRODUCT_STATUS = localized({
   ok: { label: "En stock", tone: "green" },
   low: { label: "Stock bas", tone: "amber" },
   out: { label: "Rupture", tone: "red" },
-};
+});
 
 export function lowStockProducts(products) {
   return products
@@ -86,8 +87,8 @@ export function dailySeries(sales, days) {
       date: day.toISOString(),
       label:
         days <= 7
-          ? day.toLocaleDateString("fr-FR", { weekday: "short" }).replace(".", "")
-          : day.toLocaleDateString("fr-FR", { day: "2-digit", month: "2-digit" }),
+          ? day.toLocaleDateString(locale(), { weekday: "short" }).replace(".", "")
+          : day.toLocaleDateString(locale(), { day: "2-digit", month: "2-digit" }),
       revenue: sumBy(daySales, (s) => s.total),
       margin: sumBy(daySales, saleMargin),
       count: daySales.length,
@@ -103,7 +104,7 @@ export function monthlySeries(sales, months = 6) {
     const next = new Date(ref.getFullYear(), ref.getMonth() + 1, 1);
     const monthSales = salesBetween(list, ref, next);
     return {
-      label: ref.toLocaleDateString("fr-FR", { month: "short" }).replace(".", ""),
+      label: ref.toLocaleDateString(locale(), { month: "short" }).replace(".", ""),
       revenue: sumBy(monthSales, (s) => s.total),
       margin: sumBy(monthSales, saleMargin),
       count: monthSales.length,
@@ -162,13 +163,13 @@ export function installmentStatus(installment) {
   return "ongoing";
 }
 
-export const INSTALLMENT_STATUS = {
+export const INSTALLMENT_STATUS = localized({
   ongoing: { label: "En cours", tone: "blue" },
   soon: { label: "Échéance proche", tone: "amber" },
   late: { label: "En retard", tone: "red" },
   paid: { label: "Soldé", tone: "green" },
   cancelled: { label: "Annulé", tone: "slate" },
-};
+});
 
 export function totalReceivables(installments) {
   return sumBy(
@@ -193,20 +194,20 @@ export function customerStats(customer, sales, installments) {
   return { orders: customerSales.length, spent, debt, lastSale, segment, sales: customerSales };
 }
 
-export const CUSTOMER_SEGMENTS = {
+export const CUSTOMER_SEGMENTS = localized({
   vip: { label: "VIP", tone: "amber" },
   regular: { label: "Fidèle", tone: "green" },
   new: { label: "Nouveau", tone: "blue" },
   inactive: { label: "Inactif", tone: "slate" },
-};
+});
 
 // ---------------- Approvisionnements ----------------
-export const PO_STATUS = {
+export const PO_STATUS = localized({
   draft: { label: "Brouillon", tone: "slate" },
   sent: { label: "Envoyée", tone: "blue" },
   received: { label: "Reçue", tone: "green" },
   cancelled: { label: "Annulée", tone: "red" },
-};
+});
 
 export function purchaseOrderTotal(order) {
   return sumBy(order.items, (item) => item.qty * item.cost);
@@ -225,15 +226,80 @@ export function openMaintenance(tasks) {
   return tasks.filter((task) => task.status !== "Terminé");
 }
 
-export const ROLE_LABELS = {
+export const ROLE_LABELS = localized({
   admin: "Administrateur",
   seller: "Vendeur",
   technician: "Maintenancier",
-};
+  accountant: "Comptable",
+});
 
 /** Interventions d'un maintenancier (liées à son compte, ou à son nom pour les anciennes). */
 export function isAssignedTo(task, user) {
   if (!user) return false;
   if (task.technicianId) return task.technicianId === user.id;
   return Boolean(task.assignedTo) && task.assignedTo.trim().toLowerCase() === user.name.trim().toLowerCase();
+}
+
+// ---------------- Caisse journalière ----------------
+/** Billets et pièces en francs CFA, pour le comptage à la clôture */
+export const CASH_DENOMINATIONS = [10000, 5000, 2000, 1000, 500, 100, 50, 25, 10, 5];
+
+export const CASH_MOVEMENT_TYPES = localized({
+  deposit: "Versement en banque",
+  expense: "Petite dépense",
+  in: "Apport en caisse",
+});
+
+/** Caisse ouverte d'un vendeur (au plus une). */
+export function openCashSession(sessions, sellerId) {
+  return (sessions || []).find((s) => s.sellerId === sellerId && s.status === "open") || null;
+}
+
+/**
+ * Récapitulatif d'une session de caisse : encaissements par moyen de paiement (ventes comptant
+ * et versements reçus par le vendeur), mouvements de caisse, espèces attendues dans le tiroir.
+ */
+export function cashSummary(session, state) {
+  const from = new Date(session.openedAt).getTime();
+  const to = session.closedAt ? new Date(session.closedAt).getTime() : Date.now();
+  const inWindow = (date) => {
+    const time = new Date(date).getTime();
+    return time >= from && time <= to;
+  };
+
+  const sales = state.sales.filter((s) => s.sellerId === session.sellerId && inWindow(s.date));
+  const valid = sales.filter((s) => s.status !== "cancelled");
+  const byMethod = { cash: 0, mobile: 0, card: 0, transfer: 0 };
+  for (const sale of valid) if (sale.mode === "cash") byMethod[sale.method] = (byMethod[sale.method] || 0) + sale.total;
+
+  // Acomptes et tranches encaissés par ce vendeur pendant la session
+  const payments = [];
+  for (const installment of state.installments) {
+    for (const payment of installment.payments) {
+      const collector = payment.receivedBy || installment.sellerId;
+      if (collector === session.sellerId && inWindow(payment.date)) payments.push({ ...payment, installmentId: installment.id, customerName: installment.customerName });
+    }
+  }
+  for (const payment of payments) byMethod[payment.method] = (byMethod[payment.method] || 0) + payment.amount;
+
+  const movements = session.movements || [];
+  const total = (type) => sumBy(movements.filter((m) => m.type === type), (m) => m.amount);
+  const cashIn = total("in");
+  const deposits = total("deposit");
+  const expenses = total("expense");
+  const expected = (Number(session.openingFloat) || 0) + byMethod.cash + cashIn - deposits - expenses;
+
+  return {
+    sales: valid,
+    salesCount: valid.length,
+    cancelledCount: sales.length - valid.length,
+    salesTotal: sumBy(valid, (s) => s.total),
+    payments,
+    byMethod,
+    collected: Object.values(byMethod).reduce((sum, value) => sum + value, 0),
+    cashIn,
+    deposits,
+    expenses,
+    expected,
+  };
 }

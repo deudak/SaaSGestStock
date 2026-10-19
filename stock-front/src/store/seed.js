@@ -33,6 +33,12 @@ export const DEFAULT_SETTINGS = {
   invoiceFooter: "Merci pour votre confiance.",
   emailNotifications: true,
   allowSellerCredit: true,
+  // Comptabilité : date d'ouverture des comptes et soldes à cette date
+  accountingStart: "",
+  openingCash: 0,
+  openingBank: 0,
+  openingMobile: 0,
+  openingPayables: 0,
 };
 
 /** Données d'une entreprise qui démarre (ou d'un appareil hors ligne sans données). */
@@ -51,6 +57,12 @@ export function createEmptyState() {
     maintenanceTasks: [],
     maintenanceHistory: [],
     techSheets: [],
+    // Comptabilité (administrateur) : dépenses, règlements fournisseurs, écritures manuelles
+    expenses: [],
+    supplierPayments: [],
+    journalEntries: [],
+    // Caisse journalière : sessions de caisse des vendeurs
+    cashSessions: [],
     // Synchronisation : modifications en attente d'envoi, position dans le journal du serveur,
     // et code de l'appareil utilisé dans les numéros (V-K7Q-0001)
     outbox: [],

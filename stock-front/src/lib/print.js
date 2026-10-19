@@ -1,6 +1,21 @@
 import { formatDate, formatDateTime, formatMoney } from "./format";
 import { PAYMENT_LABELS, installmentPaid, installmentRemaining } from "../store/selectors";
 import { brandBase } from "./branding";
+import { getLanguage, t } from "../i18n/index.js";
+
+/**
+ * Traduit les textes statiques d'un document HTML (« Facture », « Qté »…) : chaque texte placé
+ * entre deux balises passe par le dictionnaire ; les textes absents restent inchangés.
+ */
+function translateHtml(html) {
+  if (getLanguage() === "fr") return html;
+  return html.replace(/>([^<>]+)</g, (match, text) => {
+    const core = text.trim();
+    if (!core || !/[A-Za-zÀ-ÿ]/.test(core)) return match;
+    const translated = t(core);
+    return translated === core ? match : `>${text.replace(core, translated)}<`;
+  });
+}
 
 const escapeHtml = (value) =>
   String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[char]);
@@ -48,7 +63,7 @@ export function printHtml(title, body, settings, extraStyles = "") {
   document.body.appendChild(iframe);
   const doc = iframe.contentDocument;
   doc.open();
-  doc.write(`<!doctype html><html lang="fr"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>:root { --brand: ${brandBase(settings?.brandColor)}; }${baseStyles}${extraStyles}</style></head><body>${body}</body></html>`);
+  doc.write(`<!doctype html><html lang="${getLanguage()}"><head><meta charset="utf-8"/><title>${escapeHtml(title)}</title><style>:root { --brand: ${brandBase(settings?.brandColor)}; }${baseStyles}${extraStyles}</style></head><body>${translateHtml(body)}</body></html>`);
   doc.close();
   // Attendre le chargement du logo avant d'imprimer
   const images = [...doc.images].map((img) => (img.complete ? null : new Promise((resolve) => { img.onload = img.onerror = resolve; })));
@@ -90,9 +105,9 @@ export function printSaleInvoice(sale, { settings, customer, seller, installment
       </div>
       <div class="box">
         <div class="label">Règlement</div>
-        <div>${escapeHtml(PAYMENT_LABELS[sale.method] || sale.method)} · ${sale.mode === "credit" ? "Paiement échelonné" : "Comptant"}</div>
-        <div class="muted">Vendeur : ${escapeHtml(seller?.name || "—")}</div>
-        ${installment ? `<div class="muted">Échéance : ${formatDate(installment.dueDate)}</div>` : ""}
+        <div>${escapeHtml(PAYMENT_LABELS[sale.method] || sale.method)} · ${sale.mode === "credit" ? t("Paiement échelonné") : t("Comptant")}</div>
+        <div class="muted">${t("Vendeur : {0}", [escapeHtml(seller?.name || "—")])}</div>
+        ${installment ? `<div class="muted">${t("Échéance : {0}", [formatDate(installment.dueDate)])}</div>` : ""}
       </div>
     </div>
     <table>
@@ -109,7 +124,7 @@ export function printSaleInvoice(sale, { settings, customer, seller, installment
     <div class="sign"><span>Signature du client</span><span>Cachet et signature</span></div>
     <div class="foot">${escapeHtml(settings.invoiceFooter)}</div>`;
 
-  printHtml(`Facture ${sale.id}`, body, settings);
+  printHtml(t("Facture {0}", [sale.id]), body, settings);
 }
 
 /** Ticket de caisse au format 80 mm */
@@ -124,7 +139,7 @@ export function printReceipt(sale, { settings, seller }) {
       <div class="muted small">${escapeHtml(settings.address)}<br/>${escapeHtml(settings.phone)}</div>
     </div>
     <div class="dash"></div>
-    <div class="small">Ticket <b>${escapeHtml(sale.id)}</b><br/>${formatDateTime(sale.date)}<br/>Vendeur : ${escapeHtml(seller?.name || "—")}<br/>Client : ${escapeHtml(sale.customerName)}</div>
+    <div class="small">${t("Ticket")} <b>${escapeHtml(sale.id)}</b><br/>${formatDateTime(sale.date)}<br/>${t("Vendeur : {0}", [escapeHtml(seller?.name || "—")])}<br/>${t("Client : {0}", [escapeHtml(t(sale.customerName))])}</div>
     <div class="dash"></div>
     <table>${rows}</table>
     <div class="dash"></div>
@@ -137,7 +152,7 @@ export function printReceipt(sale, { settings, seller }) {
     <div class="dash"></div>
     <div class="small muted" style="text-align:center">${escapeHtml(settings.invoiceFooter)}</div>`;
 
-  printHtml(`Ticket ${sale.id}`, body, settings, `
+  printHtml(t("Ticket {0}", [sale.id]), body, settings, `
     body { width: 76mm; padding: 4mm; font-size: 11px; }
     td { padding: 2px 0; border: 0; }
     .dash { border-top: 1px dashed #94a3b8; margin: 8px 0; }
@@ -158,7 +173,7 @@ export function printInstallmentStatement(installment, { settings, customer }) {
       <div>
         <div class="doc-title">Relevé de compte</div>
         <div class="doc-number">${escapeHtml(installment.id)}</div>
-        <div class="muted small" style="text-align:right">Édité le ${formatDate(new Date())}</div>
+        <div class="muted small" style="text-align:right">${t("Édité le {0}", [formatDate(new Date())])}</div>
       </div>
     </div>
     <div class="grid">
@@ -170,7 +185,7 @@ export function printInstallmentStatement(installment, { settings, customer }) {
       <div class="box">
         <div class="label">Objet</div>
         <div>${escapeHtml(installment.label)}</div>
-        <div class="muted">Échéance finale : ${formatDate(installment.dueDate)}${installment.saleId ? ` · Vente ${escapeHtml(installment.saleId)}` : ""}</div>
+        <div class="muted">${t("Échéance finale : {0}", [formatDate(installment.dueDate)])}${installment.saleId ? ` · ${t("Vente {0}", [escapeHtml(installment.saleId)])}` : ""}</div>
       </div>
     </div>
     <div class="label">Historique des versements</div>
@@ -186,7 +201,7 @@ export function printInstallmentStatement(installment, { settings, customer }) {
     <div class="sign"><span>Signature du client</span><span>Signature du vendeur</span></div>
     <div class="foot">${escapeHtml(settings.invoiceFooter)}</div>`;
 
-  printHtml(`Relevé ${installment.id}`, body, settings);
+  printHtml(t("Relevé {0}", [installment.id]), body, settings);
 }
 
 export function printPurchaseOrder(order, { settings, supplier }) {
@@ -223,5 +238,76 @@ export function printPurchaseOrder(order, { settings, supplier }) {
     <div class="totals"><div class="grand"><span>Total commande</span><span>${formatMoney(total)}</span></div></div>
     ${order.notes ? `<p style="margin-top:20px"><span class="label">Notes</span><br/>${escapeHtml(order.notes)}</p>` : ""}
     <div class="sign"><span>Bon pour accord fournisseur</span><span>Signature acheteur</span></div>`;
-  printHtml(`Bon de commande ${order.id}`, body, settings);
+  printHtml(t("Bon de commande {0}", [order.id]), body, settings);
+}
+
+/** État comptable imprimable (journal, balance, compte de résultat, bilan, TVA) avec l'en-tête de l'entreprise. */
+export function printAccountingReport(title, subtitle, bodyHtml, settings) {
+  const body = `
+    <div class="head">
+      ${companyBlock(settings)}
+      <div>
+        <div class="doc-title">${escapeHtml(t(title))}</div>
+        <div class="muted small" style="text-align:right">${escapeHtml(subtitle)}</div>
+        <div class="muted small" style="text-align:right">${t("Édité le {0}", [formatDate(new Date())])} · ${t("Plan comptable OHADA")}</div>
+      </div>
+    </div>
+    <div style="margin-top:20px">${bodyHtml}</div>`;
+  printHtml(t(title), body, settings, `
+    table { font-size: 11px; }
+    td, th { padding: 6px 8px; }
+    .section td { background: #f1f5f9; font-weight: 700; text-transform: uppercase; font-size: 10px; letter-spacing: 0.06em; }
+    .total td { font-weight: 800; border-top: 2px solid var(--brand); }
+    .sub td { font-weight: 700; background: #f8fafc; }
+    .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  `);
+}
+
+export { escapeHtml };
+
+/** Rapport de clôture de caisse (ticket Z), format 80 mm. */
+export function printCashReport(session, summary, { settings, seller }) {
+  const row = (label, value, strong = false) => `<tr><td>${strong ? `<b>${label}</b>` : label}</td><td class="r">${strong ? `<b>${value}</b>` : value}</td></tr>`;
+  const methods = Object.entries(summary.byMethod).filter(([, value]) => value).map(([method, value]) => row(escapeHtml(PAYMENT_LABELS[method] || method), formatMoney(value))).join("");
+  const movements = (session.movements || []).map((m) => row(`${formatDateTime(m.at)} · ${escapeHtml(m.reason || "")}`, `${m.type === "in" ? "+" : "−"} ${formatMoney(m.amount)}`)).join("");
+  const closed = session.status === "closed";
+  const body = `
+    <div style="text-align:center">
+      <div class="brand" style="font-size:16px">${escapeHtml(settings.shopName)}</div>
+      <div class="small"><b>${t(closed ? "Rapport de clôture de caisse" : "État de caisse provisoire")}</b></div>
+    </div>
+    <div class="dash"></div>
+    <div class="small">${t("Vendeur : {0}", [escapeHtml(seller?.name || "—")])}<br/>${t("Ouverture : {0}", [formatDateTime(session.openedAt)])}${closed ? `<br/>${t("Clôture : {0}", [formatDateTime(session.closedAt)])}` : ""}</div>
+    <div class="dash"></div>
+    <table>
+      ${row(t("Ventes validées"), summary.salesCount)}
+      ${summary.cancelledCount ? row(t("Ventes annulées"), summary.cancelledCount) : ""}
+      ${row(t("Chiffre d'affaires"), formatMoney(summary.salesTotal))}
+    </table>
+    <div class="dash"></div>
+    <div class="small"><b>${t("Encaissements")}</b></div>
+    <table>${methods || row(t("Aucun"), "—")}${row(t("Total encaissé"), formatMoney(summary.collected), true)}</table>
+    <div class="dash"></div>
+    <div class="small"><b>${t("Espèces")}</b></div>
+    <table>
+      ${row(t("Fond de caisse"), formatMoney(session.openingFloat || 0))}
+      ${row(t("Espèces encaissées"), formatMoney(summary.byMethod.cash))}
+      ${summary.cashIn ? row(t("Apports"), `+ ${formatMoney(summary.cashIn)}`) : ""}
+      ${summary.deposits ? row(t("Versements en banque"), `− ${formatMoney(summary.deposits)}`) : ""}
+      ${summary.expenses ? row(t("Petites dépenses"), `− ${formatMoney(summary.expenses)}`) : ""}
+      ${row(t("Espèces attendues"), formatMoney(closed ? session.expectedCash : summary.expected), true)}
+      ${closed ? row(t("Espèces comptées"), formatMoney(session.countedCash), true) : ""}
+      ${closed ? row(t("Écart"), `${session.difference > 0 ? "+" : ""}${formatMoney(session.difference)}`, true) : ""}
+    </table>
+    ${movements ? `<div class="dash"></div><div class="small"><b>${t("Mouvements de caisse")}</b></div><table>${movements}</table>` : ""}
+    ${session.note ? `<div class="dash"></div><div class="small">${escapeHtml(session.note)}</div>` : ""}
+    <div class="dash"></div>
+    <div class="small muted" style="margin-top:18px">${t("Signature du vendeur")} : ____________________</div>`;
+
+  printHtml(t("Caisse {0}", [formatDateTime(session.openedAt)]), body, settings, `
+    body { width: 76mm; padding: 4mm; font-size: 11px; }
+    td { padding: 2px 0; border: 0; }
+    .dash { border-top: 1px dashed #94a3b8; margin: 8px 0; }
+    @page { size: 80mm auto; margin: 0; }
+  `);
 }

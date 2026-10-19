@@ -1,6 +1,8 @@
 import { useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import {
+  FaBarcode,
+  FaCashRegister,
   FaCheck,
   FaCheckCircle,
   FaCreditCard,
@@ -26,7 +28,13 @@ import { Field, Input, SearchInput, Select } from "../../components/ui/Form";
 import CustomerForm from "../../components/pos/CustomerForm";
 import { addDays, formatDate, formatMoney, matches, toDateInput } from "../../lib/format";
 import { printReceipt, printSaleInvoice } from "../../lib/print";
-import { productStatus } from "../../store/selectors";
+import { cashSummary, openCashSession, productStatus } from "../../store/selectors";
+import { findByCode } from "../../lib/barcode";
+import BarcodeScanner from "../../components/scan/BarcodeScanner";
+import { OpenCashForm } from "../../components/cash/CashForms";
+import { Link } from "react-router-dom";
+
+import { locale, t } from "../../i18n/index.js";
 
 const METHODS = [
   { id: "cash", label: "Espèces", icon: FaMoneyBillWave },
@@ -55,7 +63,7 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
           if (l.productId !== productId) return l;
           const qty = l.qty + delta;
           if (qty > stock) {
-            toast.error(`Stock disponible : ${stock}`);
+            toast.error(t("Stock disponible : {0}", [stock]));
             return l;
           }
           return { ...l, qty };
@@ -75,20 +83,18 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
             <FaShoppingCart size={14} />
           </span>
           <div>
-            <p className="text-[15px] font-semibold text-slate-900">Panier</p>
+            <p className="text-[15px] font-semibold text-slate-900">{t("Panier")}</p>
             <p className="text-xs text-slate-500">
-              {itemsCount} article{itemsCount > 1 ? "s" : ""}
+              {itemsCount}{" "}{t("article")}{itemsCount > 1 ? "s" : ""}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
           {cart.length > 0 && (
-            <Button size="xs" variant="danger-ghost" icon={FaTrash} onClick={() => setCart([])}>
-              Vider
-            </Button>
+            <Button size="xs" variant="danger-ghost" icon={FaTrash} onClick={() => setCart([])}>{t("Vider")}</Button>
           )}
           {onClose && (
-            <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500" aria-label="Fermer le panier">
+            <button type="button" onClick={onClose} className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100 text-slate-500" aria-label={t("Fermer le panier")}>
               <FaTimes size={12} />
             </button>
           )}
@@ -99,15 +105,13 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
         {/* Client */}
         <div className="mb-4">
           <div className="mb-1.5 flex items-center justify-between">
-            <label htmlFor="pos-customer" className="text-[13px] font-medium text-slate-700">
-              Client {isCredit && <span className="text-rose-500">*</span>}
+            <label htmlFor="pos-customer" className="text-[13px] font-medium text-slate-700">{t("Client")}{" "}{isCredit && <span className="text-rose-500">*</span>}
             </label>
             <button type="button" onClick={onNewCustomer} className="inline-flex items-center gap-1 text-xs font-semibold text-brand-600 hover:text-brand-700">
-              <FaUserPlus size={10} /> Nouveau
-            </button>
+              <FaUserPlus size={10} />{" "}{t("Nouveau")}</button>
           </div>
           <Select id="pos-customer" value={checkout.customerId} onChange={(e) => set("customerId")(e.target.value)}>
-            <option value="">Client de passage</option>
+            <option value="">{t("Client de passage")}</option>
             {customers.map((c) => (
               <option key={c.id} value={c.id}>
                 {c.name} — {c.phone}
@@ -120,8 +124,8 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
         {cart.length === 0 ? (
           <div className="flex flex-col items-center rounded-2xl border border-dashed border-slate-200 py-10 text-center">
             <FaShoppingCart size={26} className="text-slate-300" />
-            <p className="mt-3 text-sm font-medium text-slate-600">Panier vide</p>
-            <p className="mt-0.5 text-xs text-slate-400">Touchez un produit pour l'ajouter</p>
+            <p className="mt-3 text-sm font-medium text-slate-600">{t("Panier vide")}</p>
+            <p className="mt-0.5 text-xs text-slate-400">{t("Touchez un produit pour l'ajouter")}</p>
           </div>
         ) : (
           <ul className="space-y-2.5">
@@ -131,21 +135,21 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
                 <li key={line.productId} className={`rounded-xl border p-3 ${tooLow ? "border-rose-300 bg-rose-50/50" : "border-slate-200"}`}>
                   <div className="flex items-start gap-2">
                     <p className="min-w-0 flex-1 text-[13px] font-semibold leading-snug text-slate-800">{line.name}</p>
-                    <button type="button" onClick={() => setCart((prev) => prev.filter((l) => l.productId !== line.productId))} className="rounded-md p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={`Retirer ${line.name}`}>
+                    <button type="button" onClick={() => setCart((prev) => prev.filter((l) => l.productId !== line.productId))} className="rounded-md p-1 text-slate-400 hover:bg-rose-50 hover:text-rose-600" aria-label={t("Retirer {0}", [line.name])}>
                       <FaTimes size={11} />
                     </button>
                   </div>
                   <div className="mt-2 flex items-center gap-2">
                     <div className="flex items-center rounded-lg border border-slate-200 bg-white">
-                      <button type="button" onClick={() => changeQty(line.productId, -1)} className="flex h-8 w-8 items-center justify-center text-slate-500 hover:text-slate-900" aria-label="Diminuer">
+                      <button type="button" onClick={() => changeQty(line.productId, -1)} className="flex h-8 w-8 items-center justify-center text-slate-500 hover:text-slate-900" aria-label={t("Diminuer")}>
                         <FaMinus size={9} />
                       </button>
                       <span className="tabular w-7 text-center text-sm font-semibold">{line.qty}</span>
-                      <button type="button" onClick={() => changeQty(line.productId, 1)} className="flex h-8 w-8 items-center justify-center text-slate-500 hover:text-slate-900" aria-label="Augmenter">
+                      <button type="button" onClick={() => changeQty(line.productId, 1)} className="flex h-8 w-8 items-center justify-center text-slate-500 hover:text-slate-900" aria-label={t("Augmenter")}>
                         <FaPlus size={9} />
                       </button>
                     </div>
-                    <span className="text-xs text-slate-400">×</span>
+                    <span className="text-xs text-slate-400">{t("×")}</span>
                     <div className="relative flex-1">
                       <input
                         type="number"
@@ -153,21 +157,18 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
                         value={line.price}
                         onChange={(e) => updateLine(line.productId, { price: Number(e.target.value) || 0 })}
                         className={`tabular h-8 w-full rounded-lg border bg-white pl-2.5 pr-6 text-right text-[13px] font-semibold outline-none focus:ring-4 ${tooLow ? "border-rose-400 text-rose-700 focus:ring-rose-500/10" : "border-slate-200 text-slate-800 focus:border-brand-500 focus:ring-brand-500/10"}`}
-                        aria-label={`Prix unitaire de ${line.name}`}
+                        aria-label={t("Prix unitaire de {0}", [line.name])}
                       />
-                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">F</span>
+                      <span className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 text-[10px] text-slate-400">{t("F")}</span>
                     </div>
                     <span className="tabular w-24 text-right text-[13px] font-bold text-slate-900">{formatMoney(line.qty * line.price)}</span>
                   </div>
                   {tooLow ? (
-                    <p className="mt-1.5 text-[11px] font-medium text-rose-600">Prix minimum autorisé : {formatMoney(line.minPrice)}</p>
+                    <p className="mt-1.5 text-[11px] font-medium text-rose-600">{t("Prix minimum autorisé :")}{" "}{formatMoney(line.minPrice)}</p>
                   ) : (
                     line.price !== line.listPrice && (
-                      <p className="mt-1.5 text-[11px] text-slate-500">
-                        Prix catalogue {formatMoney(line.listPrice)} ·{" "}
-                        <button type="button" className="font-semibold text-brand-600" onClick={() => updateLine(line.productId, { price: line.listPrice })}>
-                          rétablir
-                        </button>
+                      <p className="mt-1.5 text-[11px] text-slate-500">{t("Prix catalogue")}{" "}{formatMoney(line.listPrice)}·{" "}
+                        <button type="button" className="font-semibold text-brand-600" onClick={() => updateLine(line.productId, { price: line.listPrice })}>{t("rétablir")}</button>
                       </p>
                     )
                   )}
@@ -181,7 +182,7 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
           <div className="mt-5 space-y-4">
             {/* Remise */}
             {maxDiscount > 0 && (
-              <Field label="Remise" hint={`Maximum ${settings.maxDiscountPercent} % soit ${formatMoney(maxDiscount)}`}>
+              <Field label={t("Remise")} hint={t("Maximum {0} % soit {1}", [settings.maxDiscountPercent, formatMoney(maxDiscount)])}>
                 <Input type="number" min="0" max={maxDiscount} value={checkout.discount} onChange={(e) => set("discount")(e.target.value)} suffix="F" placeholder="0" />
               </Field>
             )}
@@ -189,11 +190,11 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
             {/* Type de vente */}
             {settings.allowSellerCredit && (
               <div>
-                <p className="mb-1.5 text-[13px] font-medium text-slate-700">Type de vente</p>
+                <p className="mb-1.5 text-[13px] font-medium text-slate-700">{t("Type de vente")}</p>
                 <div className="grid grid-cols-2 gap-1 rounded-xl bg-slate-100 p-1">
                   {[
-                    { value: "cash", label: "Comptant" },
-                    { value: "credit", label: "Échelonné" },
+                    { value: "cash", label: t("Comptant") },
+                    { value: "credit", label: t("Échelonné") },
                   ].map((option) => (
                     <button
                       key={option.value}
@@ -201,7 +202,7 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
                       onClick={() => set("mode")(option.value)}
                       className={`rounded-lg py-2 text-[13px] font-semibold transition ${checkout.mode === option.value ? "bg-white text-slate-900 shadow-sm" : "text-slate-500"}`}
                     >
-                      {option.label}
+                      {t(option.label)}
                     </button>
                   ))}
                 </div>
@@ -210,7 +211,7 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
 
             {/* Paiement */}
             <div>
-              <p className="mb-1.5 text-[13px] font-medium text-slate-700">{isCredit ? "Mode de paiement de l'acompte" : "Mode de paiement"}</p>
+              <p className="mb-1.5 text-[13px] font-medium text-slate-700">{isCredit ? t("Mode de paiement de l'acompte") : t("Mode de paiement")}</p>
               <div className="grid grid-cols-4 gap-1.5">
                 {METHODS.map((m) => (
                   <button
@@ -220,7 +221,7 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
                     className={`flex flex-col items-center gap-1 rounded-xl border px-1 py-2.5 text-[10px] font-semibold transition ${checkout.method === m.id ? "border-brand-500 bg-brand-50 text-brand-700" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}
                   >
                     <m.icon size={14} />
-                    <span className="w-full truncate text-center">{m.label}</span>
+                    <span className="w-full truncate text-center">{t(m.label)}</span>
                   </button>
                 ))}
               </div>
@@ -228,17 +229,17 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
 
             {isCredit ? (
               <div className="grid grid-cols-2 gap-3 rounded-xl border border-amber-200 bg-amber-50/60 p-3">
-                <Field label="Acompte versé">
+                <Field label={t("Acompte versé")}>
                   <Input type="number" min="0" value={checkout.deposit} onChange={(e) => set("deposit")(e.target.value)} suffix="F" placeholder="0" />
                 </Field>
-                <Field label="Échéance">
+                <Field label={t("Échéance")}>
                   <Input type="date" min={toDateInput()} value={checkout.dueDate} onChange={(e) => set("dueDate")(e.target.value)} />
                 </Field>
-                {!checkout.customerId && <p className="col-span-2 text-xs font-medium text-amber-700">Sélectionnez un client pour une vente échelonnée.</p>}
+                {!checkout.customerId && <p className="col-span-2 text-xs font-medium text-amber-700">{t("Sélectionnez un client pour une vente échelonnée.")}</p>}
               </div>
             ) : (
               checkout.method === "cash" && (
-                <Field label="Montant reçu" hint={received >= total && received > 0 ? `Monnaie à rendre : ${formatMoney(received - total)}` : undefined}>
+                <Field label={t("Montant reçu")} hint={received >= total && received > 0 ? t("Monnaie à rendre : {0}", [formatMoney(received - total)]) : undefined}>
                   <Input type="number" min="0" value={checkout.received} onChange={(e) => set("received")(e.target.value)} suffix="F" placeholder={String(total)} />
                 </Field>
               )
@@ -251,30 +252,30 @@ function CartPanel({ cart, setCart, products, customers, settings, onCheckout, o
       <div className="border-t border-slate-100 bg-slate-50/70 px-5 py-4">
         <div className="space-y-1 text-sm">
           <div className="flex justify-between text-slate-500">
-            <span>Sous-total</span>
+            <span>{t("Sous-total")}</span>
             <span className="tabular">{formatMoney(subtotal)}</span>
           </div>
           {discount > 0 && (
             <div className="flex justify-between text-emerald-600">
-              <span>Remise</span>
+              <span>{t("Remise")}</span>
               <span className="tabular">− {formatMoney(discount)}</span>
             </div>
           )}
           {isCredit && cart.length > 0 && (
             <div className="flex justify-between text-amber-700">
-              <span>Reste à payer après acompte</span>
+              <span>{t("Reste à payer après acompte")}</span>
               <span className="tabular">{formatMoney(total - deposit)}</span>
             </div>
           )}
         </div>
         <div className="mt-2 flex items-baseline justify-between">
-          <span className="text-sm font-semibold text-slate-700">{isCredit ? "Total de la vente" : "Total à payer"}</span>
+          <span className="text-sm font-semibold text-slate-700">{isCredit ? t("Total de la vente") : t("Total à payer")}</span>
           <span className="tabular text-2xl font-bold tracking-tight text-slate-900">{formatMoney(total)}</span>
         </div>
         <Button size="lg" variant="success" className="mt-3 w-full" icon={FaCheck} disabled={!canSubmit} onClick={() => onCheckout({ subtotal, discount, total, deposit })}>
-          {isCredit ? `Valider · acompte ${formatMoney(deposit)}` : "Encaisser"}
+          {isCredit ? t("Valider · acompte {0}", [formatMoney(deposit)]) : t("Encaisser")}
         </Button>
-        {invalidLines.length > 0 && <p className="mt-2 text-center text-xs font-medium text-rose-600">Corrigez les prix inférieurs au minimum autorisé.</p>}
+        {invalidLines.length > 0 && <p className="mt-2 text-center text-xs font-medium text-rose-600">{t("Corrigez les prix inférieurs au minimum autorisé.")}</p>}
       </div>
     </div>
   );
@@ -291,23 +292,26 @@ export default function POS() {
   const [cartOpen, setCartOpen] = useState(false);
   const [customerModal, setCustomerModal] = useState(false);
   const [lastSale, setLastSale] = useState(null);
+  const [scanning, setScanning] = useState(false);
+  const session = openCashSession(state.cashSessions, currentUser.id);
+  const lastFloat = (state.cashSessions || []).filter((s) => s.sellerId === currentUser.id && s.status === "closed").sort((a, b) => b.closedAt.localeCompare(a.closedAt))[0]?.openingFloat || 0;
 
   const products = useMemo(
     () =>
       state.products
-        .filter((p) => (category === "all" || p.category === category) && matches(search, p.name, p.sku, p.category))
+        .filter((p) => (category === "all" || p.category === category) && matches(search, p.name, p.sku, p.barcode, p.category))
         .sort((a, b) => (b.stock > 0) - (a.stock > 0) || a.name.localeCompare(b.name, "fr")),
     [state.products, category, search]
   );
   const customers = useMemo(() => [...state.customers].sort((a, b) => a.name.localeCompare(b.name, "fr")), [state.customers]);
 
   const addToCart = (product) => {
-    if (product.stock <= 0) return toast.error("Produit en rupture de stock");
+    if (product.stock <= 0) return toast.error(t("Produit en rupture de stock"));
     setCart((prev) => {
       const existing = prev.find((l) => l.productId === product.id);
       if (existing) {
         if (existing.qty >= product.stock) {
-          toast.error(`Stock disponible : ${product.stock}`);
+          toast.error(t("Stock disponible : {0}", [product.stock]));
           return prev;
         }
         return prev.map((l) => (l.productId === product.id ? { ...l, qty: l.qty + 1 } : l));
@@ -316,10 +320,22 @@ export default function POS() {
     });
   };
 
+  /** Code lu par la caméra ou une douchette : ajoute l'article correspondant au panier. */
+  const addByCode = (code) => {
+    const product = findByCode(state.products, code);
+    if (!product) {
+      toast.error(t("Code inconnu : {0}", [code]), { id: `scan-${code}` });
+      return false;
+    }
+    addToCart(product);
+    toast.success(product.name, { id: `scan-${product.id}`, duration: 1200 });
+    return true;
+  };
+
   const handleCheckout = ({ discount, total, deposit }) => {
     const customer = state.customers.find((c) => c.id === checkout.customerId);
     if (checkout.mode === "cash" && checkout.method === "cash" && checkout.received && Number(checkout.received) < total) {
-      return toast.error("Le montant reçu est inférieur au total.");
+      return toast.error(t("Le montant reçu est inférieur au total."));
     }
     const sale = actions.createSale({
       items: cart.map(({ productId, name, qty, price }) => ({ productId, name, qty, price })),
@@ -359,28 +375,68 @@ export default function POS() {
   const saleCustomer = lastSale && state.customers.find((c) => c.id === lastSale.sale.customerId);
   const saleInstallment = lastSale && state.installments.find((i) => i.id === lastSale.sale.installmentId);
 
+  if (!session) {
+    return (
+      <div className="mx-auto max-w-md space-y-4 py-6">
+        <div className="text-center">
+          <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-brand-50 text-brand-600">
+            <FaCashRegister size={20} />
+          </span>
+          <h1 className="mt-3 text-xl font-bold text-slate-900">{t("Ouvrez votre caisse")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("Indiquez le fond de caisse présent dans le tiroir pour commencer à vendre.")}</p>
+        </div>
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-card">
+          <OpenCashForm
+            suggestedFloat={lastFloat}
+            onSubmit={(amount) => {
+              actions.openCashSession(amount);
+              toast.success(t("Caisse ouverte"));
+            }}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  const expectedCash = cashSummary(session, state).expected;
+
   return (
     <div className="lg:grid lg:grid-cols-[1fr_400px] lg:gap-6">
       <section className="min-w-0 space-y-4">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight text-slate-900">Point de vente</h1>
-          <p className="mt-1 text-sm text-slate-500">Recherchez par nom ou référence, puis appuyez sur Entrée pour ajouter.</p>
+          <h1 className="text-2xl font-bold tracking-tight text-slate-900">{t("Point de vente")}</h1>
+          <p className="mt-1 text-sm text-slate-500">{t("Recherchez par nom ou référence, puis appuyez sur Entrée pour ajouter.")}</p>
         </div>
+        <Link to="/seller/cash" className="flex items-center justify-between gap-3 rounded-xl bg-emerald-50 px-4 py-2 text-[13px] text-emerald-800 hover:bg-emerald-100">
+          <span className="inline-flex items-center gap-2">
+            <FaCashRegister size={12} /> {t("Caisse ouverte depuis {0}", [new Date(session.openedAt).toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })])}
+          </span>
+          <span className="tabular font-semibold">{t("Espèces : {0}", [formatMoney(expectedCash)])}</span>
+        </Link>
 
+        <div className="flex gap-2">
         <SearchInput
+          className="flex-1"
           value={search}
           onChange={setSearch}
-          placeholder="Rechercher un produit ou scanner un code…"
+          placeholder={t("Rechercher un produit ou scanner un code…")}
           autoFocus
           onKeyDown={(e) => {
-            if (e.key === "Enter" && products.length) {
+            if (e.key === "Enter" && search.trim()) {
               e.preventDefault();
-              const exact = products.find((p) => p.sku.toLowerCase() === search.trim().toLowerCase()) || products[0];
-              addToCart(exact);
+              // Code-barres ou référence exacte (douchette), sinon premier résultat de la recherche
+              const exact = findByCode(state.products, search);
+              if (exact) addToCart(exact);
+              else if (products.length) addToCart(products[0]);
+              else toast.error(t("Code inconnu : {0}", [search.trim()]));
               setSearch("");
             }
           }}
         />
+          <Button variant="secondary" icon={FaBarcode} onClick={() => setScanning(true)} aria-label={t("Scanner avec la caméra")} title={t("Scanner avec la caméra")}>
+            <span className="hidden sm:inline">{t("Scanner")}</span>
+          </Button>
+        </div>
         <div className="scrollbar-thin -mx-1 flex gap-1.5 overflow-x-auto px-1 pb-1">
           {["all", ...state.categories].map((c) => (
             <button
@@ -389,13 +445,13 @@ export default function POS() {
               onClick={() => setCategory(c)}
               className={`shrink-0 rounded-full px-3.5 py-1.5 text-[13px] font-semibold transition ${category === c ? "bg-slate-900 text-white" : "bg-white text-slate-600 ring-1 ring-slate-200 hover:ring-slate-300"}`}
             >
-              {c === "all" ? "Tous" : c}
+              {c === "all" ? t("Tous") : c}
             </button>
           ))}
         </div>
 
         {products.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-200 py-14 text-center text-sm text-slate-500">Aucun produit ne correspond à votre recherche.</div>
+          <div className="rounded-2xl border border-dashed border-slate-200 py-14 text-center text-sm text-slate-500">{t("Aucun produit ne correspond à votre recherche.")}</div>
         ) : (
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4">
             {products.map((product) => {
@@ -418,14 +474,14 @@ export default function POS() {
                   {inCart && <span className="tabular absolute left-3 top-3 flex h-6 min-w-6 items-center justify-center rounded-full bg-brand-600 px-1.5 text-xs font-bold text-white shadow">{inCart.qty}</span>}
                   {st !== "ok" && (
                     <span className="absolute right-3 top-3">
-                      <Badge tone={out ? "red" : "amber"}>{out ? "Rupture" : `Plus que ${product.stock}`}</Badge>
+                      <Badge tone={out ? "red" : "amber"}>{out ? t("Rupture") : t("Plus que {0}", [product.stock])}</Badge>
                     </span>
                   )}
                   <div className="flex flex-1 flex-col p-3">
                     <p className="line-clamp-2 text-[13px] font-semibold leading-snug text-slate-800">{product.name}</p>
                     <div className="mt-auto flex items-end justify-between gap-2 pt-2">
                       <span className="tabular text-[15px] font-bold text-brand-700">{formatMoney(product.price)}</span>
-                      <span className="text-[11px] text-slate-400">{product.stock} en stock</span>
+                      <span className="text-[11px] text-slate-400">{product.stock}{" "}{t("en stock")}</span>
                     </div>
                   </div>
                 </button>
@@ -445,7 +501,7 @@ export default function POS() {
         <div className="fixed inset-x-3 bottom-19 z-30 lg:hidden">
           <button type="button" onClick={() => setCartOpen(true)} className="flex w-full items-center gap-3 rounded-2xl bg-slate-900 px-4 py-3 text-white shadow-pop">
             <span className="tabular flex h-8 min-w-8 items-center justify-center rounded-lg bg-white/15 px-2 text-sm font-bold">{cartCount}</span>
-            <span className="text-sm font-semibold">Voir le panier</span>
+            <span className="text-sm font-semibold">{t("Voir le panier")}</span>
             <span className="tabular ml-auto text-base font-bold">{formatMoney(cartTotal)}</span>
           </button>
         </div>
@@ -459,22 +515,23 @@ export default function POS() {
         </div>
       )}
 
-      <Modal isOpen={customerModal} onClose={() => setCustomerModal(false)} title="Nouveau client" size="lg">
+      <BarcodeScanner isOpen={scanning} continuous onClose={() => setScanning(false)} onDetected={addByCode} title={t("Scanner les articles")} />
+      <Modal isOpen={customerModal} onClose={() => setCustomerModal(false)} title={t("Nouveau client")} size="lg">
         {customerModal && (
           <CustomerForm
-            submitLabel="Créer et sélectionner"
+            submitLabel={t("Créer et sélectionner")}
             onCancel={() => setCustomerModal(false)}
             onSubmit={(data) => {
               const id = actions.saveCustomer(data);
               setCheckout((prev) => ({ ...prev, customerId: id }));
               setCustomerModal(false);
-              toast.success("Client ajouté");
+              toast.success(t("Client ajouté"));
             }}
           />
         )}
       </Modal>
 
-      <Modal isOpen={Boolean(lastSale)} onClose={() => setLastSale(null)} title="Vente enregistrée" size="sm">
+      <Modal isOpen={Boolean(lastSale)} onClose={() => setLastSale(null)} title={t("Vente enregistrée")} size="sm">
         {lastSale && (
           <div className="text-center">
             <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
@@ -482,29 +539,23 @@ export default function POS() {
             </div>
             <p className="mt-3 font-mono text-sm font-semibold text-slate-500">{lastSale.sale.id}</p>
             <p className="tabular mt-1 text-3xl font-bold tracking-tight text-slate-900">{formatMoney(lastSale.sale.total)}</p>
-            <p className="mt-1 text-sm text-slate-500">{lastSale.sale.customerName}</p>
+            <p className="mt-1 text-sm text-slate-500">{t(lastSale.sale.customerName)}</p>
             {lastSale.change > 0 && (
               <p className="mt-3 inline-flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">
-                <FaExchangeAlt size={11} /> Monnaie à rendre : {formatMoney(lastSale.change)}
+                <FaExchangeAlt size={11} />{" "}{t("Monnaie à rendre :")}{" "}{formatMoney(lastSale.change)}
               </p>
             )}
             {lastSale.sale.mode === "credit" && (
               <div className="mt-4 rounded-xl bg-amber-50 p-3 text-left text-sm text-amber-800">
-                <p>
-                  Acompte : <b>{formatMoney(lastSale.sale.paid)}</b>
+                <p>{t("Acompte :")}{" "}<b>{formatMoney(lastSale.sale.paid)}</b>
                 </p>
-                <p>
-                  Reste : <b>{formatMoney(lastSale.sale.total - lastSale.sale.paid)}</b> avant le {formatDate(saleInstallment?.dueDate)}
+                <p>{t("Reste :")}{" "}<b>{formatMoney(lastSale.sale.total - lastSale.sale.paid)}</b>{" "}{t("avant le")}{" "}{formatDate(saleInstallment?.dueDate)}
                 </p>
               </div>
             )}
             <div className="mt-5 grid grid-cols-2 gap-2">
-              <Button variant="secondary" icon={FaReceipt} onClick={() => printReceipt(lastSale.sale, { settings: state.settings, seller: currentUser })}>
-                Ticket
-              </Button>
-              <Button variant="secondary" icon={FaFileInvoice} onClick={() => printSaleInvoice(lastSale.sale, { settings: state.settings, customer: saleCustomer, seller: currentUser, installment: saleInstallment })}>
-                Facture
-              </Button>
+              <Button variant="secondary" icon={FaReceipt} onClick={() => printReceipt(lastSale.sale, { settings: state.settings, seller: currentUser })}>{t("Ticket")}</Button>
+              <Button variant="secondary" icon={FaFileInvoice} onClick={() => printSaleInvoice(lastSale.sale, { settings: state.settings, customer: saleCustomer, seller: currentUser, installment: saleInstallment })}>{t("Facture")}</Button>
             </div>
             <Button
               className="mt-2 w-full"
@@ -513,9 +564,7 @@ export default function POS() {
                 setLastSale(null);
                 setTimeout(() => document.querySelector('input[type="search"]')?.focus(), 50);
               }}
-            >
-              Nouvelle vente
-            </Button>
+            >{t("Nouvelle vente")}</Button>
           </div>
         )}
       </Modal>

@@ -13,6 +13,15 @@
       rel="stylesheet"
     />
     <title>DYM Stock</title>
+    <script>
+      // Thème appliqué avant l'affichage (évite un flash blanc en mode sombre)
+      try {
+        var pref = localStorage.getItem("dymTheme") || "system";
+        if (pref === "dark" || (pref === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches)) document.documentElement.classList.add("dark");
+        var lang = localStorage.getItem("dymLang");
+        if (lang) document.documentElement.lang = lang;
+      } catch (e) {}
+    </script>
   </head>
   <body>
     <div id="root"></div>

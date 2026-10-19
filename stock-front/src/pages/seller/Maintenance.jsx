@@ -9,6 +9,8 @@ import { Field, Input, Select, Textarea } from "../../components/ui/Form";
 import { formatDate, formatRelative } from "../../lib/format";
 import { MAINTENANCE_STATUS } from "../../store/selectors";
 
+import { t } from "../../i18n/index.js";
+
 const URGENCY = [
   { value: "normal", label: "Normale" },
   { value: "high", label: "Urgente — bloque les ventes" },
@@ -18,13 +20,13 @@ export default function SellerMaintenance() {
   const { state, actions, currentUser } = useStore();
   const [form, setForm] = useState({ product: "", task: "", urgency: "normal" });
 
-  const equipment = [...new Set([...state.techSheets.map((s) => s.product), ...state.maintenanceTasks.map((t) => t.product)])];
-  const mine = state.maintenanceTasks.filter((t) => t.reportedBy === currentUser.id).sort((a, b) => b.date.localeCompare(a.date));
-  const scheduled = state.maintenanceTasks.filter((t) => t.status !== "Terminé" && t.source === "admin").sort((a, b) => a.date.localeCompare(b.date));
+  const equipment = [...new Set([...state.techSheets.map((s) => s.product), ...state.maintenanceTasks.map((item) => item.product)])];
+  const mine = state.maintenanceTasks.filter((item) => item.reportedBy === currentUser.id).sort((a, b) => b.date.localeCompare(a.date));
+  const scheduled = state.maintenanceTasks.filter((item) => item.status !== "Terminé" && item.source === "admin").sort((a, b) => a.date.localeCompare(b.date));
 
   const submit = (e) => {
     e.preventDefault();
-    if (!form.product.trim() || !form.task.trim()) return toast.error("Précisez l'équipement et le problème.");
+    if (!form.product.trim() || !form.task.trim()) return toast.error(t("Précisez l'équipement et le problème."));
     actions.saveMaintenanceTask({
       product: form.product.trim(),
       task: form.urgency === "high" ? `[URGENT] ${form.task.trim()}` : form.task.trim(),
@@ -36,27 +38,27 @@ export default function SellerMaintenance() {
       reportedBy: currentUser.id,
     });
     setForm({ product: "", task: "", urgency: "normal" });
-    toast.success("Signalement envoyé à l'administrateur");
+    toast.success(t("Signalement envoyé à l'administrateur"));
   };
 
   return (
     <div className="space-y-6">
-      <PageHeader eyebrow="Compte" title="Signalements" description="Signalez une panne d'équipement : l'administrateur est alerté immédiatement." />
+      <PageHeader eyebrow={t("Compte")} title={t("Signalements")} description={t("Signalez une panne d'équipement : l'administrateur est alerté immédiatement.")} />
 
       <div className="grid gap-6 lg:grid-cols-[1fr_380px]">
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Signaler un problème" subtitle="Caisse, imprimante, climatisation, éclairage…" icon={FaBullhorn} tone="violet" />
+            <CardHeader title={t("Signaler un problème")} subtitle={t("Caisse, imprimante, climatisation, éclairage…")} icon={FaBullhorn} tone="violet" />
             <form className="space-y-4" onSubmit={submit}>
               <div className="grid gap-4 sm:grid-cols-2">
-                <Field label="Équipement concerné" required>
-                  <Input list="seller-equipment" value={form.product} onChange={(e) => setForm((p) => ({ ...p, product: e.target.value }))} placeholder="Ex : Imprimante de caisse" />
+                <Field label={t("Équipement concerné")} required>
+                  <Input list="seller-equipment" value={form.product} onChange={(e) => setForm((p) => ({ ...p, product: e.target.value }))} placeholder={t("Ex : Imprimante de caisse")} />
                 </Field>
-                <Field label="Urgence">
+                <Field label={t("Urgence")}>
                   <Select value={form.urgency} onChange={(e) => setForm((p) => ({ ...p, urgency: e.target.value }))}>
                     {URGENCY.map((u) => (
                       <option key={u.value} value={u.value}>
-                        {u.label}
+                        {t(u.label)}
                       </option>
                     ))}
                   </Select>
@@ -67,35 +69,32 @@ export default function SellerMaintenance() {
                   <option key={name} value={name} />
                 ))}
               </datalist>
-              <Field label="Description du problème" required>
-                <Textarea value={form.task} onChange={(e) => setForm((p) => ({ ...p, task: e.target.value }))} rows={4} placeholder="Que se passe-t-il ? Depuis quand ? Avez-vous essayé de redémarrer ?" />
+              <Field label={t("Description du problème")} required>
+                <Textarea value={form.task} onChange={(e) => setForm((p) => ({ ...p, task: e.target.value }))} rows={4} placeholder={t("Que se passe-t-il ? Depuis quand ? Avez-vous essayé de redémarrer ?")} />
               </Field>
               <div className="flex justify-end">
-                <Button type="submit" icon={FaPaperPlane}>
-                  Envoyer le signalement
-                </Button>
+                <Button type="submit" icon={FaPaperPlane}>{t("Envoyer le signalement")}</Button>
               </div>
             </form>
           </Card>
 
           <Card>
-            <CardHeader title="Mes signalements" subtitle="Suivez le traitement par l'administrateur" icon={FaTools} />
+            <CardHeader title={t("Mes signalements")} subtitle={t("Suivez le traitement par l'administrateur")} icon={FaTools} />
             {mine.length === 0 ? (
-              <EmptyState icon={FaCheckCircle} title="Aucun signalement" description="Vos signalements et leur avancement apparaîtront ici." />
+              <EmptyState icon={FaCheckCircle} title={t("Aucun signalement")} description={t("Vos signalements et leur avancement apparaîtront ici.")} />
             ) : (
               <ul className="divide-y divide-slate-100">
-                {mine.map((t) => (
-                  <li key={t.id} className="flex items-start justify-between gap-3 py-3">
+                {mine.map((item) => (
+                  <li key={item.id} className="flex items-start justify-between gap-3 py-3">
                     <div className="min-w-0">
-                      <p className="font-medium text-slate-800">{t.product}</p>
-                      <p className="text-sm text-slate-600">{t.task}</p>
-                      <p className="mt-0.5 text-xs text-slate-400">
-                        Envoyé {formatRelative(t.date)}
-                        {t.assignedTo && ` · Pris en charge par ${t.assignedTo}`}
+                      <p className="font-medium text-slate-800">{item.product}</p>
+                      <p className="text-sm text-slate-600">{item.task}</p>
+                      <p className="mt-0.5 text-xs text-slate-400">{t("Envoyé")}{" "}{formatRelative(item.date)}
+                        {item.assignedTo && t(" · Pris en charge par {0}", [item.assignedTo])}
                       </p>
                     </div>
-                    <Badge tone={MAINTENANCE_STATUS[t.status]?.tone} dot>
-                      {t.status === "Terminé" ? "Résolu" : t.status}
+                    <Badge tone={MAINTENANCE_STATUS[item.status]?.tone} dot>
+                      {item.status === "Terminé" ? t("Résolu") : item.status}
                     </Badge>
                   </li>
                 ))}
@@ -106,19 +105,19 @@ export default function SellerMaintenance() {
 
         <div className="space-y-6">
           <Card>
-            <CardHeader title="Interventions prévues" subtitle="Planifiées par l'administrateur" icon={FaTools} tone="slate" />
+            <CardHeader title={t("Interventions prévues")} subtitle={t("Planifiées par l'administrateur")} icon={FaTools} tone="slate" />
             {scheduled.length === 0 ? (
-              <p className="text-sm text-slate-500">Aucune intervention planifiée.</p>
+              <p className="text-sm text-slate-500">{t("Aucune intervention planifiée.")}</p>
             ) : (
               <ul className="space-y-3">
-                {scheduled.map((t) => (
-                  <li key={t.id} className="rounded-xl border border-slate-200 p-3">
+                {scheduled.map((item) => (
+                  <li key={item.id} className="rounded-xl border border-slate-200 p-3">
                     <div className="flex items-start justify-between gap-2">
-                      <p className="text-sm font-semibold text-slate-800">{t.product}</p>
-                      <Badge tone={MAINTENANCE_STATUS[t.status]?.tone}>{t.status}</Badge>
+                      <p className="text-sm font-semibold text-slate-800">{item.product}</p>
+                      <Badge tone={MAINTENANCE_STATUS[item.status]?.tone}>{t(item.status)}</Badge>
                     </div>
-                    <p className="mt-0.5 text-xs text-slate-600">{t.task}</p>
-                    <p className="mt-1 text-xs text-slate-400">Prévu le {formatDate(t.date)}</p>
+                    <p className="mt-0.5 text-xs text-slate-600">{item.task}</p>
+                    <p className="mt-1 text-xs text-slate-400">{t("Prévu le")}{" "}{formatDate(item.date)}</p>
                   </li>
                 ))}
               </ul>
@@ -127,7 +126,7 @@ export default function SellerMaintenance() {
           <Card className="bg-brand-50/50">
             <div className="flex gap-3">
               <FaInfoCircle className="mt-0.5 shrink-0 text-brand-600" size={14} />
-              <p className="text-sm text-slate-600">Un produit vendu défectueux ? Annulez la vente depuis « Mes ventes » le jour même, ou contactez l'administrateur pour un retour.</p>
+              <p className="text-sm text-slate-600">{t("Un produit vendu défectueux ? Annulez la vente depuis « Mes ventes » le jour même, ou contactez l'administrateur pour un retour.")}</p>
             </div>
           </Card>
         </div>

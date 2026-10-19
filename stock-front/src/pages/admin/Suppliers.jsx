@@ -12,6 +12,8 @@ import { Field, Input, SearchInput, Select, Textarea } from "../../components/ui
 import { formatMoney, matches } from "../../lib/format";
 import { purchaseOrderTotal } from "../../store/selectors";
 
+import { t } from "../../i18n/index.js";
+
 const emptySupplier = { name: "", contact: "", phone: "", email: "", category: "", address: "", status: "Actif", rating: 4, delay: 5, notes: "" };
 
 function Stars({ value, onChange }) {
@@ -24,7 +26,7 @@ function Stars({ value, onChange }) {
           disabled={!onChange}
           onClick={() => onChange?.(n)}
           className={`${n <= value ? "text-amber-400" : "text-slate-200"} ${onChange ? "p-0.5 hover:scale-110" : "cursor-default"} transition`}
-          aria-label={`${n} étoile${n > 1 ? "s" : ""}`}
+          aria-label={t("{0} étoile{1}", [n, n > 1 ? "s" : ""])}
         >
           <FaStar size={onChange ? 18 : 12} />
         </button>
@@ -45,18 +47,18 @@ function SupplierForm({ initial, categories, onSubmit, onCancel }) {
       onSubmit={(event) => {
         event.preventDefault();
         const next = {};
-        if (!form.name.trim()) next.name = "Nom obligatoire.";
-        if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) next.email = "Email invalide.";
+        if (!form.name.trim()) next.name = t("Nom obligatoire.");
+        if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) next.email = t("Email invalide.");
         setErrors(next);
         if (Object.keys(next).length) return;
         onSubmit({ ...form, name: form.name.trim(), delay: Number(form.delay) || 0 });
       }}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Raison sociale" error={errors.name} required>
-          <Input value={form.name} onChange={set("name")} placeholder="TechDistrib SARL" />
+        <Field label={t("Raison sociale")} error={errors.name} required>
+          <Input value={form.name} onChange={set("name")} placeholder={t("TechDistrib SARL")} />
         </Field>
-        <Field label="Spécialité">
+        <Field label={t("Spécialité")}>
           <Select value={form.category} onChange={set("category")}>
             <option value="">—</option>
             {categories.map((c) => (
@@ -64,44 +66,40 @@ function SupplierForm({ initial, categories, onSubmit, onCancel }) {
             ))}
           </Select>
         </Field>
-        <Field label="Contact principal">
-          <Input value={form.contact} onChange={set("contact")} placeholder="Nom du contact" />
+        <Field label={t("Contact principal")}>
+          <Input value={form.contact} onChange={set("contact")} placeholder={t("Nom du contact")} />
         </Field>
-        <Field label="Téléphone">
-          <Input type="tel" value={form.phone} onChange={set("phone")} placeholder="6xx xx xx xx" />
+        <Field label={t("Téléphone")}>
+          <Input type="tel" value={form.phone} onChange={set("phone")} placeholder={t("6xx xx xx xx")} />
         </Field>
-        <Field label="Email" error={errors.email}>
-          <Input type="email" value={form.email} onChange={set("email")} placeholder="commandes@fournisseur.cm" />
+        <Field label={t("Email")} error={errors.email}>
+          <Input type="email" value={form.email} onChange={set("email")} placeholder={t("commandes@fournisseur.cm")} />
         </Field>
-        <Field label="Délai de livraison moyen">
+        <Field label={t("Délai de livraison moyen")}>
           <Input type="number" min="0" value={form.delay} onChange={set("delay")} suffix="jours" />
         </Field>
       </div>
-      <Field label="Adresse">
-        <Input value={form.address} onChange={set("address")} placeholder="Quartier, ville" />
+      <Field label={t("Adresse")}>
+        <Input value={form.address} onChange={set("address")} placeholder={t("Quartier, ville")} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Statut">
+        <Field label={t("Statut")}>
           <Select value={form.status} onChange={set("status")}>
-            <option>Actif</option>
-            <option>En attente</option>
-            <option>Suspendu</option>
+            <option>{t("Actif")}</option>
+            <option>{t("En attente")}</option>
+            <option>{t("Suspendu")}</option>
           </Select>
         </Field>
-        <Field label="Fiabilité">
+        <Field label={t("Fiabilité")}>
           <Stars value={form.rating} onChange={(rating) => setForm((prev) => ({ ...prev, rating }))} />
         </Field>
       </div>
-      <Field label="Notes internes">
-        <Textarea value={form.notes} onChange={set("notes")} rows={2} placeholder="Conditions de paiement, remarques…" />
+      <Field label={t("Notes internes")}>
+        <Textarea value={form.notes} onChange={set("notes")} rows={2} placeholder={t("Conditions de paiement, remarques…")} />
       </Field>
       <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-        <Button variant="secondary" onClick={onCancel}>
-          Annuler
-        </Button>
-        <Button type="submit" icon={FaCheck}>
-          Enregistrer
-        </Button>
+        <Button variant="secondary" onClick={onCancel}>{t("Annuler")}</Button>
+        <Button type="submit" icon={FaCheck}>{t("Enregistrer")}</Button>
       </div>
     </form>
   );
@@ -134,13 +132,11 @@ export default function AdminSuppliers() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Stock"
-        title="Fournisseurs"
-        description="Contacts, fiabilité et volume d'achats de vos partenaires."
+        eyebrow={t("Stock")}
+        title={t("Fournisseurs")}
+        description={t("Contacts, fiabilité et volume d'achats de vos partenaires.")}
         actions={
-          <Button icon={FaPlus} onClick={() => setEditing({})}>
-            Nouveau fournisseur
-          </Button>
+          <Button icon={FaPlus} onClick={() => setEditing({})}>{t("Nouveau fournisseur")}</Button>
         }
       />
 
@@ -150,15 +146,15 @@ export default function AdminSuppliers() {
           onChange={setStatus}
           size="sm"
           options={[
-            { value: "all", label: "Tous", count: state.suppliers.length },
-            ...["Actif", "En attente", "Suspendu"].map((s) => ({ value: s, label: s, count: state.suppliers.filter((x) => x.status === s).length })),
+            { value: "all", label: t("Tous"), count: state.suppliers.length },
+            ...["Actif", "En attente", "Suspendu"].map((s) => ({ value: s, label: t(s), count: state.suppliers.filter((x) => x.status === s).length })),
           ]}
         />
-        <SearchInput value={search} onChange={setSearch} placeholder="Nom, contact, spécialité…" className="sm:w-72" />
+        <SearchInput value={search} onChange={setSearch} placeholder={t("Nom, contact, spécialité…")} className="sm:w-72" />
       </div>
 
       {list.length === 0 ? (
-        <EmptyState icon={FaTruck} title="Aucun fournisseur" description="Ajoutez vos fournisseurs pour préparer vos commandes." action={<Button icon={FaPlus} onClick={() => setEditing({})}>Nouveau fournisseur</Button>} />
+        <EmptyState icon={FaTruck} title={t("Aucun fournisseur")} description={t("Ajoutez vos fournisseurs pour préparer vos commandes.")} action={<Button icon={FaPlus} onClick={() => setEditing({})}>{t("Nouveau fournisseur")}</Button>} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {list.map((supplier) => {
@@ -175,7 +171,7 @@ export default function AdminSuppliers() {
                     </div>
                   </div>
                   <Badge tone={statusTone[supplier.status]} dot>
-                    {supplier.status}
+                    {t(supplier.status)}
                   </Badge>
                 </div>
 
@@ -201,39 +197,37 @@ export default function AdminSuppliers() {
                 <div className="mt-4 grid grid-cols-3 gap-2 rounded-xl bg-slate-50 p-3 text-center">
                   <div>
                     <p className="tabular text-sm font-bold text-slate-900">{s.products}</p>
-                    <p className="text-[11px] text-slate-500">Produits</p>
+                    <p className="text-[11px] text-slate-500">{t("Produits")}</p>
                   </div>
                   <div>
-                    <p className="tabular text-sm font-bold text-slate-900">{supplier.delay} j</p>
-                    <p className="text-[11px] text-slate-500">Délai</p>
+                    <p className="tabular text-sm font-bold text-slate-900">{supplier.delay}{" "}{t("j")}</p>
+                    <p className="text-[11px] text-slate-500">{t("Délai")}</p>
                   </div>
                   <div>
                     <p className="tabular truncate text-sm font-bold text-slate-900">{formatMoney(s.purchased)}</p>
-                    <p className="text-[11px] text-slate-500">Achats reçus</p>
+                    <p className="text-[11px] text-slate-500">{t("Achats reçus")}</p>
                   </div>
                 </div>
 
                 {supplier.notes && <p className="mt-3 line-clamp-2 text-xs italic text-slate-500">« {supplier.notes} »</p>}
 
                 <div className="mt-auto flex items-center gap-2 pt-4">
-                  {s.pending > 0 && <Badge tone="blue">{s.pending} livraison(s) attendue(s)</Badge>}
+                  {s.pending > 0 && <Badge tone="blue">{s.pending}{" "}{t("livraison(s) attendue(s)")}</Badge>}
                   <div className="ml-auto flex gap-1">
-                    <Button size="sm" variant="secondary" icon={FaEdit} onClick={() => setEditing(supplier)}>
-                      Modifier
-                    </Button>
+                    <Button size="sm" variant="secondary" icon={FaEdit} onClick={() => setEditing(supplier)}>{t("Modifier")}</Button>
                     <Button
                       size="icon-sm"
                       variant="danger-ghost"
-                      aria-label="Supprimer"
+                      aria-label={t("Supprimer")}
                       onClick={async () => {
                         const ok = await confirm({
-                          title: "Supprimer ce fournisseur ?",
-                          message: s.products ? `${s.products} produit(s) ne seront plus rattachés à un fournisseur.` : `« ${supplier.name} » sera supprimé.`,
-                          confirmLabel: "Supprimer",
+                          title: t("Supprimer ce fournisseur ?"),
+                          message: s.products ? t("{0} produit(s) ne seront plus rattachés à un fournisseur.", [s.products]) : t("« {0} » sera supprimé.", [supplier.name]),
+                          confirmLabel: t("Supprimer"),
                         });
                         if (!ok) return;
                         actions.deleteSupplier(supplier.id);
-                        toast.success("Fournisseur supprimé");
+                        toast.success(t("Fournisseur supprimé"));
                       }}
                     >
                       <FaTrash size={11} />
@@ -246,7 +240,7 @@ export default function AdminSuppliers() {
         </div>
       )}
 
-      <Modal isOpen={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.id ? "Modifier le fournisseur" : "Nouveau fournisseur"} size="lg">
+      <Modal isOpen={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.id ? t("Modifier le fournisseur") : t("Nouveau fournisseur")} size="lg">
         {editing && (
           <SupplierForm
             initial={editing}
@@ -254,7 +248,7 @@ export default function AdminSuppliers() {
             onCancel={() => setEditing(null)}
             onSubmit={(data) => {
               actions.saveSupplier(editing.id ? { ...data, id: editing.id } : data);
-              toast.success(editing.id ? "Fournisseur mis à jour" : "Fournisseur ajouté");
+              toast.success(editing.id ? t("Fournisseur mis à jour") : t("Fournisseur ajouté"));
               setEditing(null);
             }}
           />

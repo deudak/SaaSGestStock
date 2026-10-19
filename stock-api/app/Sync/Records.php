@@ -2,15 +2,19 @@
 
 namespace App\Sync;
 
+use App\Models\CashSession;
 use App\Models\Category;
 use App\Models\Customer;
+use App\Models\Expense;
 use App\Models\Installment;
+use App\Models\JournalEntry;
 use App\Models\MaintenanceHistory;
 use App\Models\MaintenanceTask;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Sale;
 use App\Models\StockMovement;
+use App\Models\SupplierPayment;
 use App\Models\Supplier;
 use App\Models\TechSheet;
 use App\Support\ClientFormat;
@@ -38,14 +42,26 @@ class Records
         'task' => [MaintenanceTask::class, 'maintenanceTasks'],
         'history' => [MaintenanceHistory::class, 'maintenanceHistory'],
         'sheet' => [TechSheet::class, 'techSheets'],
+        'expense' => [Expense::class, 'expenses'],
+        'supplierPayment' => [SupplierPayment::class, 'supplierPayments'],
+        'journalEntry' => [JournalEntry::class, 'journalEntries'],
+        'cashSession' => [CashSession::class, 'cashSessions'],
     ];
 
     /** Seule la maintenance est visible du maintenancier */
     public const MAINTENANCE = ['task', 'history', 'sheet'];
 
+    /** Comptabilité réservée à l'administrateur */
+    public const ACCOUNTING = ['expense', 'supplierPayment', 'journalEntry'];
+
     public static function visibleTo(string $role): array
     {
-        return $role === 'technician' ? self::MAINTENANCE : array_keys(self::ENTITIES);
+        return match ($role) {
+            // Le comptable lit tout ce qui produit des écritures (ventes, achats, stock, maintenance)
+            'admin', 'accountant' => array_keys(self::ENTITIES),
+            'technician' => self::MAINTENANCE,
+            default => array_values(array_diff(array_keys(self::ENTITIES), self::ACCOUNTING)),
+        };
     }
 
     public static function query(string $entity): Builder
@@ -66,7 +82,8 @@ class Records
         $query = match ($entity) {
             'category' => $query->orderBy('position'),
             'supplier', 'sheet' => $query->orderBy($entity === 'supplier' ? 'name' : 'product'),
-            'sale', 'movement', 'history' => $query->orderByDesc('date'),
+            'sale', 'movement', 'history', 'expense', 'supplierPayment', 'journalEntry' => $query->orderByDesc('date'),
+            'cashSession' => $query->orderByDesc('opened_at'),
             'task' => $query->orderBy('date'),
             default => $query->orderByDesc('created_at'),
         };

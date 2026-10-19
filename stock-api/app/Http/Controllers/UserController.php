@@ -27,7 +27,7 @@ class UserController extends Controller
             'email' => ['required', 'email', 'max:255', 'unique:users,email'],
             'phone' => ['nullable', 'string', 'max:50'],
             'shop' => ['nullable', 'string', 'max:255'],
-            'role' => ['sometimes', Rule::in(['admin', 'seller', 'technician'])],
+            'role' => ['sometimes', Rule::in(['admin', 'seller', 'technician', 'accountant'])],
             'status' => ['sometimes', Rule::in(['actif', 'inactif'])],
             'password' => ['required', 'string', 'min:6', 'max:255'],
         ], $this->messages());
@@ -49,7 +49,7 @@ class UserController extends Controller
             'email' => ['sometimes', 'required', 'email', 'max:255', Rule::unique('users', 'email')->ignore($user->id)],
             'phone' => ['sometimes', 'nullable', 'string', 'max:50'],
             'shop' => ['sometimes', 'nullable', 'string', 'max:255'],
-            'role' => ['sometimes', Rule::in(['admin', 'seller', 'technician'])],
+            'role' => ['sometimes', Rule::in(['admin', 'seller', 'technician', 'accountant'])],
             'status' => ['sometimes', Rule::in(['actif', 'inactif'])],
             'password' => ['sometimes', 'nullable', 'string', 'min:6', 'max:255'],
         ], $this->messages());

@@ -15,6 +15,8 @@ import { addDays, formatDate, formatMoney, formatRelative, matches, toDateInput 
 import { printInstallmentStatement } from "../../lib/print";
 import { INSTALLMENT_STATUS, PAYMENT_LABELS, installmentPaid, installmentRemaining, installmentStatus, sumBy } from "../../store/selectors";
 
+import { t } from "../../i18n/index.js";
+
 function PaymentForm({ installment, onSubmit, onCancel }) {
   const remaining = installmentRemaining(installment);
   const [amount, setAmount] = useState(String(remaining));
@@ -28,21 +30,21 @@ function PaymentForm({ installment, onSubmit, onCancel }) {
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (value <= 0) return toast.error("Montant invalide.");
-        if (value > remaining) return toast.error(`Le montant dépasse le reste à payer (${formatMoney(remaining)}).`);
+        if (value <= 0) return toast.error(t("Montant invalide."));
+        if (value > remaining) return toast.error(t("Le montant dépasse le reste à payer ({0}).", [formatMoney(remaining)]));
         onSubmit({ amount: value, method, note, date: new Date(`${date}T${new Date().toTimeString().slice(0, 8)}`).toISOString() });
       }}
     >
       <div className="rounded-xl bg-slate-50 p-3 text-sm">
-        <InfoRow label="Reste à payer" strong>
+        <InfoRow label={t("Reste à payer")} strong>
           {formatMoney(remaining)}
         </InfoRow>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Montant reçu" required>
+        <Field label={t("Montant reçu")} required>
           <Input type="number" min="1" max={remaining} value={amount} onChange={(e) => setAmount(e.target.value)} suffix="F" />
         </Field>
-        <Field label="Mode de paiement">
+        <Field label={t("Mode de paiement")}>
           <Select value={method} onChange={(e) => setMethod(e.target.value)}>
             {Object.entries(PAYMENT_LABELS).map(([id, label]) => (
               <option key={id} value={id}>
@@ -51,32 +53,27 @@ function PaymentForm({ installment, onSubmit, onCancel }) {
             ))}
           </Select>
         </Field>
-        <Field label="Date du versement">
+        <Field label={t("Date du versement")}>
           <Input type="date" max={toDateInput()} value={date} onChange={(e) => setDate(e.target.value)} />
         </Field>
-        <Field label="Note">
-          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder="Facultatif" />
+        <Field label={t("Note")}>
+          <Input value={note} onChange={(e) => setNote(e.target.value)} placeholder={t("Facultatif")} />
         </Field>
       </div>
       <div className="flex flex-wrap gap-1.5">
         {[0.25, 0.5, 1].map((share) => (
           <button key={share} type="button" onClick={() => setAmount(String(Math.round(remaining * share)))} className="rounded-full border border-slate-200 px-3 py-1 text-xs font-medium text-slate-600 hover:border-brand-300 hover:text-brand-700">
-            {share === 1 ? "Solde total" : `${share * 100} %`}
+            {share === 1 ? t("Solde total") : `${share * 100} %`}
           </button>
         ))}
       </div>
       {value > 0 && value <= remaining && (
-        <p className="text-sm text-slate-600">
-          Après ce versement : <b className="tabular">{formatMoney(remaining - value)}</b> restant{remaining - value === 0 && " — dossier soldé 🎉"}
+        <p className="text-sm text-slate-600">{t("Après ce versement :")}{" "}<b className="tabular">{formatMoney(remaining - value)}</b>{" "}{t("restant")}{remaining - value === 0 && t(" — dossier soldé 🎉")}
         </p>
       )}
       <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-        <Button variant="secondary" onClick={onCancel}>
-          Annuler
-        </Button>
-        <Button type="submit" variant="success" icon={FaCheck}>
-          Enregistrer le versement
-        </Button>
+        <Button variant="secondary" onClick={onCancel}>{t("Annuler")}</Button>
+        <Button type="submit" variant="success" icon={FaCheck}>{t("Enregistrer le versement")}</Button>
       </div>
     </form>
   );
@@ -92,18 +89,18 @@ function NewInstallmentForm({ customers, onSubmit, onCancel }) {
         e.preventDefault();
         const total = Number(form.total) || 0;
         const deposit = Number(form.deposit) || 0;
-        if (!form.customerId) return toast.error("Choisissez un client.");
-        if (!form.label.trim()) return toast.error("Décrivez l'objet de la créance.");
-        if (total <= 0) return toast.error("Montant total invalide.");
-        if (deposit > total) return toast.error("L'acompte dépasse le montant total.");
+        if (!form.customerId) return toast.error(t("Choisissez un client."));
+        if (!form.label.trim()) return toast.error(t("Décrivez l'objet de la créance."));
+        if (total <= 0) return toast.error(t("Montant total invalide."));
+        if (deposit > total) return toast.error(t("L'acompte dépasse le montant total."));
         const customer = customers.find((c) => c.id === form.customerId);
         onSubmit({ ...form, total, deposit, customerName: customer.name, label: form.label.trim(), dueDate: new Date(form.dueDate).toISOString() });
       }}
     >
-      <p className="rounded-xl bg-brand-50 px-3 py-2.5 text-xs text-brand-800">Pour une vente de produits en stock, utilisez plutôt le point de vente en mode « Échelonné » : le stock et la facture seront gérés automatiquement.</p>
-      <Field label="Client" required>
+      <p className="rounded-xl bg-brand-50 px-3 py-2.5 text-xs text-brand-800">{t("Pour une vente de produits en stock, utilisez plutôt le point de vente en mode « Échelonné » : le stock et la facture seront gérés automatiquement.")}</p>
+      <Field label={t("Client")} required>
         <Select value={form.customerId} onChange={set("customerId")}>
-          <option value="">Choisir…</option>
+          <option value="">{t("Choisir…")}</option>
           {customers.map((c) => (
             <option key={c.id} value={c.id}>
               {c.name} — {c.phone}
@@ -111,17 +108,17 @@ function NewInstallmentForm({ customers, onSubmit, onCancel }) {
           ))}
         </Select>
       </Field>
-      <Field label="Objet" required>
-        <Input value={form.label} onChange={set("label")} placeholder="Ex : Reprise d'un ancien solde, prestation…" />
+      <Field label={t("Objet")} required>
+        <Input value={form.label} onChange={set("label")} placeholder={t("Ex : Reprise d'un ancien solde, prestation…")} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Montant total" required>
+        <Field label={t("Montant total")} required>
           <Input type="number" min="1" value={form.total} onChange={set("total")} suffix="F" />
         </Field>
-        <Field label="Acompte versé">
+        <Field label={t("Acompte versé")}>
           <Input type="number" min="0" value={form.deposit} onChange={set("deposit")} suffix="F" />
         </Field>
-        <Field label="Mode de l'acompte">
+        <Field label={t("Mode de l'acompte")}>
           <Select value={form.method} onChange={set("method")}>
             {Object.entries(PAYMENT_LABELS).map(([id, label]) => (
               <option key={id} value={id}>
@@ -130,20 +127,16 @@ function NewInstallmentForm({ customers, onSubmit, onCancel }) {
             ))}
           </Select>
         </Field>
-        <Field label="Échéance finale" required>
+        <Field label={t("Échéance finale")} required>
           <Input type="date" value={form.dueDate} onChange={set("dueDate")} />
         </Field>
       </div>
-      <Field label="Notes">
+      <Field label={t("Notes")}>
         <Textarea value={form.notes} onChange={set("notes")} rows={2} />
       </Field>
       <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-        <Button variant="secondary" onClick={onCancel}>
-          Annuler
-        </Button>
-        <Button type="submit" icon={FaCheck}>
-          Créer le dossier
-        </Button>
+        <Button variant="secondary" onClick={onCancel}>{t("Annuler")}</Button>
+        <Button type="submit" icon={FaCheck}>{t("Créer le dossier")}</Button>
       </div>
     </form>
   );
@@ -202,28 +195,26 @@ export default function Installments() {
     const customer = customersById[item.customerId];
     if (!customer?.phone) return null;
     const digits = customer.phone.replace(/\D/g, "");
-    const text = `Bonjour ${item.customerName}, petit rappel de ${state.settings.shopName} : il reste ${formatMoney(item.remaining)} à régler pour « ${item.label} » (échéance du ${formatDate(item.dueDate)}). Merci !`;
+    const text = t("Bonjour {0}, petit rappel de {1} : il reste {2} à régler pour « {3} » (échéance du {4}). Merci !", [item.customerName, state.settings.shopName, formatMoney(item.remaining), item.label, formatDate(item.dueDate)]);
     return `https://wa.me/${digits.length === 9 ? `237${digits}` : digits}?text=${encodeURIComponent(text)}`;
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Clientèle"
-        title={isAdmin ? "Créances clients" : "Paiements échelonnés"}
-        description="Suivi des ventes à crédit, des versements et des échéances."
+        eyebrow={t("Clientèle")}
+        title={isAdmin ? t("Créances clients") : t("Paiements échelonnés")}
+        description={t("Suivi des ventes à crédit, des versements et des échéances.")}
         actions={
-          <Button icon={FaPlus} onClick={() => setModal("new")}>
-            Nouveau dossier
-          </Button>
+          <Button icon={FaPlus} onClick={() => setModal("new")}>{t("Nouveau dossier")}</Button>
         }
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard title="Encours total" value={formatMoney(outstanding)} icon={FaWallet} hint={`${counts.open} dossier(s) ouvert(s)`} />
-        <StatCard title="En retard" value={formatMoney(lateAmount)} icon={FaExclamationTriangle} tone="red" hint={`${counts.late} dossier(s)`} onClick={() => setTab("late")} />
-        <StatCard title="Échéance sous 7 jours" value={counts.soon} icon={FaCalendarAlt} tone="amber" hint="À relancer" onClick={() => setTab("soon")} />
-        <StatCard title="Encaissé ce mois" value={formatMoney(collectedMonth)} icon={FaHandHoldingUsd} tone="green" hint="Acomptes et versements" />
+        <StatCard title={t("Encours total")} value={formatMoney(outstanding)} icon={FaWallet} hint={t("{0} dossier(s) ouvert(s)", [counts.open])} />
+        <StatCard title={t("En retard")} value={formatMoney(lateAmount)} icon={FaExclamationTriangle} tone="red" hint={t("{0} dossier(s)", [counts.late])} onClick={() => setTab("late")} />
+        <StatCard title={t("Échéance sous 7 jours")} value={counts.soon} icon={FaCalendarAlt} tone="amber" hint={t("À relancer")} onClick={() => setTab("soon")} />
+        <StatCard title={t("Encaissé ce mois")} value={formatMoney(collectedMonth)} icon={FaHandHoldingUsd} tone="green" hint={t("Acomptes et versements")} />
       </div>
 
       <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
@@ -232,26 +223,26 @@ export default function Installments() {
           onChange={setTab}
           size="sm"
           options={[
-            { value: "open", label: "Ouverts", count: counts.open },
-            { value: "late", label: "En retard", count: counts.late },
-            { value: "soon", label: "Échéance proche", count: counts.soon },
-            { value: "paid", label: "Soldés", count: counts.paid },
-            { value: "all", label: "Tous" },
+            { value: "open", label: t("Ouverts"), count: counts.open },
+            { value: "late", label: t("En retard"), count: counts.late },
+            { value: "soon", label: t("Échéance proche"), count: counts.soon },
+            { value: "paid", label: t("Soldés"), count: counts.paid },
+            { value: "all", label: t("Tous") },
           ]}
         />
         <div className="flex gap-2">
-          <SearchInput value={search} onChange={setSearch} placeholder="Client, n°, objet…" className="flex-1 lg:w-64" />
+          <SearchInput value={search} onChange={setSearch} placeholder={t("Client, n°, objet…")} className="flex-1 lg:w-64" />
           {!isAdmin && (
-            <Select value={scope} onChange={(e) => setScope(e.target.value)} className="w-40" aria-label="Portée">
-              <option value="mine">Mes dossiers</option>
-              <option value="all">Toute la boutique</option>
+            <Select value={scope} onChange={(e) => setScope(e.target.value)} className="w-40" aria-label={t("Portée")}>
+              <option value="mine">{t("Mes dossiers")}</option>
+              <option value="all">{t("Toute la boutique")}</option>
             </Select>
           )}
         </div>
       </div>
 
       {list.length === 0 ? (
-        <EmptyState icon={FaCreditCard} title="Aucun dossier" description="Les ventes échelonnées du point de vente apparaîtront ici." />
+        <EmptyState icon={FaCreditCard} title={t("Aucun dossier")} description={t("Les ventes échelonnées du point de vente apparaîtront ici.")} />
       ) : (
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {list.map((item) => {
@@ -271,25 +262,25 @@ export default function Installments() {
                   <div className="min-w-0 flex-1">
                     <p className="truncate font-semibold text-slate-900">{item.customerName}</p>
                     <p className="truncate text-xs text-slate-500">
-                      <span className="font-mono">{item.id}</span> · {item.label}
+                      <span className="font-mono">{item.id}</span> · {t(item.label)}
                     </p>
                   </div>
                   <Badge tone={st.tone} dot>
-                    {st.label}
+                    {t(st.label)}
                   </Badge>
                 </div>
                 <div className="mt-4">
                   <div className="flex items-baseline justify-between text-sm">
                     <span className="tabular font-bold text-slate-900">{formatMoney(item.remaining)}</span>
-                    <span className="text-xs text-slate-500">restant sur {formatMoney(item.total)}</span>
+                    <span className="text-xs text-slate-500">{t("restant sur")}{" "}{formatMoney(item.total)}</span>
                   </div>
                   <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
                     <div className={`h-full rounded-full ${item.status === "paid" ? "bg-emerald-500" : item.status === "late" ? "bg-rose-500" : "bg-brand-500"}`} style={{ width: `${Math.max(progress, 2)}%` }} />
                   </div>
                   <div className="mt-1.5 flex justify-between text-[11px] text-slate-500">
-                    <span>{progress} % payé · {item.payments.length} versement(s)</span>
+                    <span>{progress}{" "}{t("% payé ·")}{" "}{item.payments.length}{" "}{t("versement(s)")}</span>
                     <span className={item.status === "late" ? "font-semibold text-rose-600" : ""}>
-                      {item.status === "paid" ? "Soldé" : `Échéance ${formatRelative(item.dueDate)}`}
+                      {item.status === "paid" ? t("Soldé") : t("Échéance {0}", [formatRelative(item.dueDate)])}
                     </span>
                   </div>
                 </div>
@@ -302,7 +293,7 @@ export default function Installments() {
       <Modal
         isOpen={Boolean(selectedFull)}
         onClose={() => select(null)}
-        title={selectedFull ? `Dossier ${selectedFull.id}` : ""}
+        title={selectedFull ? t("Dossier {0}", [selectedFull.id]) : ""}
         description={selectedFull?.label}
         size="lg"
         footer={
@@ -315,16 +306,11 @@ export default function Installments() {
                   rel="noreferrer"
                   className="inline-flex h-10 items-center justify-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-4 text-sm font-semibold text-emerald-700 hover:bg-emerald-100 sm:mr-auto"
                 >
-                  <FaWhatsapp size={14} /> Relancer
-                </a>
+                  <FaWhatsapp size={14} />{" "}{t("Relancer")}</a>
               )}
-              <Button variant="secondary" icon={FaPrint} onClick={() => printInstallmentStatement(selectedFull, { settings: state.settings, customer: customersById[selectedFull.customerId] })}>
-                Relevé
-              </Button>
+              <Button variant="secondary" icon={FaPrint} onClick={() => printInstallmentStatement(selectedFull, { settings: state.settings, customer: customersById[selectedFull.customerId] })}>{t("Relevé")}</Button>
               {selectedFull.remaining > 0 && (
-                <Button variant="success" icon={FaHandHoldingUsd} onClick={() => setModal("payment")}>
-                  Encaisser un versement
-                </Button>
+                <Button variant="success" icon={FaHandHoldingUsd} onClick={() => setModal("payment")}>{t("Encaisser un versement")}</Button>
               )}
             </>
           )
@@ -337,35 +323,33 @@ export default function Installments() {
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-slate-900">{selectedFull.customerName}</p>
                 <p className="text-xs text-slate-500">
-                  {customersById[selectedFull.customerId]?.phone || "—"} · Suivi par {usersById[selectedFull.sellerId]?.name || "—"}
-                  {selectedFull.saleId && ` · Vente ${selectedFull.saleId}`}
+                  {customersById[selectedFull.customerId]?.phone || "—"}{" "}{t("· Suivi par")}{" "}{usersById[selectedFull.sellerId]?.name || "—"}
+                  {selectedFull.saleId && t(" · Vente {0}", [selectedFull.saleId])}
                 </p>
               </div>
               <Badge tone={INSTALLMENT_STATUS[selectedFull.status].tone} dot>
-                {INSTALLMENT_STATUS[selectedFull.status].label}
+                {t(INSTALLMENT_STATUS[selectedFull.status].label)}
               </Badge>
             </div>
 
             <div className="grid grid-cols-3 gap-2">
               <div className="rounded-xl bg-slate-50 p-3">
-                <p className="text-[11px] text-slate-500">Montant total</p>
+                <p className="text-[11px] text-slate-500">{t("Montant total")}</p>
                 <p className="tabular font-bold text-slate-900">{formatMoney(selectedFull.total)}</p>
               </div>
               <div className="rounded-xl bg-emerald-50 p-3">
-                <p className="text-[11px] text-emerald-700">Déjà versé</p>
+                <p className="text-[11px] text-emerald-700">{t("Déjà versé")}</p>
                 <p className="tabular font-bold text-emerald-700">{formatMoney(selectedFull.paid)}</p>
               </div>
               <div className={`rounded-xl p-3 ${selectedFull.remaining ? "bg-amber-50" : "bg-slate-50"}`}>
-                <p className="text-[11px] text-amber-700">Reste à payer</p>
+                <p className="text-[11px] text-amber-700">{t("Reste à payer")}</p>
                 <p className="tabular font-bold text-amber-700">{formatMoney(selectedFull.remaining)}</p>
               </div>
             </div>
 
             <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3">
               <div className="flex items-center gap-2 text-sm text-slate-700">
-                <FaCalendarAlt className="text-slate-400" size={12} />
-                Échéance finale :
-                {editingDue ? (
+                <FaCalendarAlt className="text-slate-400" size={12} />{t("Échéance finale :")}{editingDue ? (
                   <Input
                     type="date"
                     defaultValue={toDateInput(selectedFull.dueDate)}
@@ -374,7 +358,7 @@ export default function Installments() {
                     onBlur={(e) => {
                       if (e.target.value) {
                         actions.updateInstallment(selectedFull.id, { dueDate: new Date(e.target.value).toISOString() });
-                        toast.success("Échéance reportée");
+                        toast.success(t("Échéance reportée"));
                       }
                       setEditingDue(false);
                     }}
@@ -384,16 +368,14 @@ export default function Installments() {
                 )}
               </div>
               {!editingDue && selectedFull.remaining > 0 && (
-                <Button size="xs" variant="ghost" onClick={() => setEditingDue(true)}>
-                  Reporter
-                </Button>
+                <Button size="xs" variant="ghost" onClick={() => setEditingDue(true)}>{t("Reporter")}</Button>
               )}
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">Versements</p>
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{t("Versements")}</p>
               {selectedFull.payments.length === 0 ? (
-                <p className="text-sm text-slate-500">Aucun versement enregistré.</p>
+                <p className="text-sm text-slate-500">{t("Aucun versement enregistré.")}</p>
               ) : (
                 <ol className="relative space-y-3 border-l-2 border-slate-100 pl-5">
                   {[...selectedFull.payments]
@@ -413,11 +395,11 @@ export default function Installments() {
                             <button
                               type="button"
                               className="rounded-md p-1 text-slate-300 hover:bg-rose-50 hover:text-rose-600"
-                              aria-label="Supprimer ce versement"
+                              aria-label={t("Supprimer ce versement")}
                               onClick={async () => {
-                                if (await confirm({ title: "Supprimer ce versement ?", message: `${formatMoney(p.amount)} du ${formatDate(p.date)} sera retiré du dossier.`, confirmLabel: "Supprimer" })) {
+                                if (await confirm({ title: t("Supprimer ce versement ?"), message: t("{0} du {1} sera retiré du dossier.", [formatMoney(p.amount), formatDate(p.date)]), confirmLabel: t("Supprimer") })) {
                                   actions.removeInstallmentPayment(selectedFull.id, p.id);
-                                  toast.success("Versement supprimé");
+                                  toast.success(t("Versement supprimé"));
                                 }
                               }}
                             >
@@ -434,28 +416,28 @@ export default function Installments() {
         )}
       </Modal>
 
-      <Modal isOpen={modal === "payment" && Boolean(selectedFull)} onClose={() => setModal(null)} title="Encaisser un versement" description={selectedFull ? `${selectedFull.customerName} · ${selectedFull.id}` : ""}>
+      <Modal isOpen={modal === "payment" && Boolean(selectedFull)} onClose={() => setModal(null)} title={t("Encaisser un versement")} description={selectedFull ? `${selectedFull.customerName} · ${selectedFull.id}` : ""}>
         {modal === "payment" && selectedFull && (
           <PaymentForm
             installment={selectedFull}
             onCancel={() => setModal(null)}
             onSubmit={(payment) => {
               actions.addInstallmentPayment(selectedFull.id, payment);
-              toast.success(payment.amount >= selectedFull.remaining ? "Dossier soldé !" : `${formatMoney(payment.amount)} encaissé`);
+              toast.success(payment.amount >= selectedFull.remaining ? t("Dossier soldé !") : t("{0} encaissé", [formatMoney(payment.amount)]));
               setModal(null);
             }}
           />
         )}
       </Modal>
 
-      <Modal isOpen={modal === "new"} onClose={() => setModal(null)} title="Nouveau dossier de paiement" size="lg">
+      <Modal isOpen={modal === "new"} onClose={() => setModal(null)} title={t("Nouveau dossier de paiement")} size="lg">
         {modal === "new" && (
           <NewInstallmentForm
             customers={[...state.customers].sort((a, b) => a.name.localeCompare(b.name, "fr"))}
             onCancel={() => setModal(null)}
             onSubmit={(data) => {
               actions.createInstallment({ ...data, sellerId: currentUser.id });
-              toast.success("Dossier créé");
+              toast.success(t("Dossier créé"));
               setModal(null);
             }}
           />

@@ -26,6 +26,12 @@ class Company extends Model
         'invoiceFooter' => 'Merci pour votre confiance.',
         'emailNotifications' => true,
         'allowSellerCredit' => true,
+        // Comptabilité : date d'ouverture des comptes et soldes à cette date
+        'accountingStart' => '',
+        'openingCash' => 0,
+        'openingBank' => 0,
+        'openingMobile' => 0,
+        'openingPayables' => 0,
     ];
 
     protected $fillable = ['name', 'logo', 'settings'];

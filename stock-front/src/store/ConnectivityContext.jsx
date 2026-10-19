@@ -3,6 +3,8 @@ import { createContext, useCallback, useContext, useEffect, useMemo, useRef, use
 import { readValue, writeValue } from "../lib/db";
 import { API_URL } from "../lib/api";
 
+import { t } from "../i18n/index.js";
+
 // Mode hors ligne : l'application fonctionne sans réseau pendant OFFLINE_LIMIT_DAYS jours
 // après le dernier contact avec le serveur. Passé ce délai, elle se verrouille
 // (les données restent intactes) jusqu'à la prochaine connexion.
@@ -105,6 +107,6 @@ export function ConnectivityProvider({ children }) {
 
 export function useConnectivity() {
   const context = useContext(ConnectivityContext);
-  if (!context) throw new Error("useConnectivity doit être utilisé dans <ConnectivityProvider>");
+  if (!context) throw new Error(t("useConnectivity doit être utilisé dans <ConnectivityProvider>"));
   return context;
 }

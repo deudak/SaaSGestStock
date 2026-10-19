@@ -14,6 +14,31 @@ class CompanyController extends Controller
         return response()->json($request->user()->company->toClient());
     }
 
+    /** Paramètres comptables seuls (ouverture des comptes) : administrateur ou comptable. */
+    public function updateAccounting(Request $request): JsonResponse
+    {
+        $data = $request->validate([
+            'settings' => ['required', 'array'],
+            'settings.accountingStart' => ['nullable', 'date_format:Y-m-d'],
+            'settings.openingCash' => ['nullable', 'integer'],
+            'settings.openingBank' => ['nullable', 'integer'],
+            'settings.openingMobile' => ['nullable', 'integer'],
+            'settings.openingPayables' => ['nullable', 'integer', 'min:0'],
+        ]);
+
+        $company = $request->user()->company;
+        $settings = $company->settings ?? [];
+        foreach (array_intersect_key($data['settings'], array_flip(self::ACCOUNTING_KEYS)) as $key => $value) {
+            $settings[$key] = $key === 'accountingStart' ? ($value ?? '') : (int) ($value ?? 0);
+        }
+        $company->settings = $settings;
+        $company->save();
+
+        return response()->json($company->toClient());
+    }
+
+    public const ACCOUNTING_KEYS = ['accountingStart', 'openingCash', 'openingBank', 'openingMobile', 'openingPayables'];
+
     public function update(Request $request): JsonResponse
     {
         $data = $request->validate([
@@ -34,6 +59,11 @@ class CompanyController extends Controller
             'settings.invoiceFooter' => ['nullable', 'string', 'max:1000'],
             'settings.emailNotifications' => ['nullable', 'boolean'],
             'settings.allowSellerCredit' => ['nullable', 'boolean'],
+            'settings.accountingStart' => ['nullable', 'date_format:Y-m-d'],
+            'settings.openingCash' => ['nullable', 'integer'],
+            'settings.openingBank' => ['nullable', 'integer'],
+            'settings.openingMobile' => ['nullable', 'integer'],
+            'settings.openingPayables' => ['nullable', 'integer', 'min:0'],
         ], [
             'logo.regex' => 'Le logo doit être une image.',
             'logo.max' => 'Le logo est trop lourd (2 Mo maximum).',

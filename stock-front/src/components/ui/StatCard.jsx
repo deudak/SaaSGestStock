@@ -1,3 +1,4 @@
+import { t } from "../../i18n/index.js";
 import { FaArrowDown, FaArrowUp } from "react-icons/fa";
 import { IconBox } from "./Card";
 
@@ -5,7 +6,7 @@ import { IconBox } from "./Card";
  * Indicateur clé. trend : variation en % (positive = bonne nouvelle par défaut).
  * invertTrend : pour les indicateurs où une baisse est positive (créances, ruptures…).
  */
-export default function StatCard({ title, value, icon, tone = "blue", trend, trendLabel = "vs période préc.", invertTrend = false, hint, onClick }) {
+export default function StatCard({ title, value, icon, tone = "blue", trend, trendLabel = t("vs période préc."), invertTrend = false, hint, onClick }) {
   const hasTrend = trend !== undefined && trend !== null && Number.isFinite(trend);
   const good = invertTrend ? trend <= 0 : trend >= 0;
   const Component = onClick ? "button" : "div";

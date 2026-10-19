@@ -30,22 +30,32 @@ export function brandBase(hex) {
 const SHADES = { 50: 7, 100: 14, 200: 26, 300: 42, 400: 64, 500: 84 };
 const DARK_SHADES = { 700: 84, 800: 70, 900: 56 };
 
-export function brandPalette(hex) {
+/**
+ * Palette brand-50 … brand-900 à partir de la couleur de l'entreprise.
+ * En mode sombre, les teintes claires (fonds) se mélangent au fond sombre
+ * et les teintes foncées (textes) s'éclaircissent.
+ */
+export function brandPalette(hex, theme = "light") {
   const base = brandBase(hex);
+  const dark = theme === "dark";
   const vars = { "--color-brand-600": base };
-  for (const [shade, pct] of Object.entries(SHADES)) vars[`--color-brand-${shade}`] = `color-mix(in oklab, ${base} ${pct}%, white)`;
-  for (const [shade, pct] of Object.entries(DARK_SHADES)) vars[`--color-brand-${shade}`] = `color-mix(in oklab, ${base} ${pct}%, black)`;
+  for (const [shade, pct] of Object.entries(SHADES)) {
+    vars[`--color-brand-${shade}`] = dark && Number(shade) <= 200 ? `color-mix(in oklab, ${base} ${pct + 8}%, #0b1120)` : `color-mix(in oklab, ${base} ${pct}%, white)`;
+  }
+  for (const [shade, pct] of Object.entries(DARK_SHADES)) {
+    vars[`--color-brand-${shade}`] = dark ? `color-mix(in oklab, ${base} ${pct - 20}%, white)` : `color-mix(in oklab, ${base} ${pct}%, black)`;
+  }
   return vars;
 }
 
 /** Applique l'identité de l'entreprise tant que le composant est monté (espace connecté). */
-export function useBranding({ brandColor, logo }) {
+export function useBranding({ brandColor, logo }, theme = "light") {
   useEffect(() => {
     const root = document.documentElement;
-    const vars = brandPalette(brandColor);
+    const vars = brandPalette(brandColor, theme);
     Object.entries(vars).forEach(([name, value]) => root.style.setProperty(name, value));
     return () => Object.keys(vars).forEach((name) => root.style.removeProperty(name));
-  }, [brandColor]);
+  }, [brandColor, theme]);
 
   useEffect(() => {
     const icon = document.querySelector('link[rel="icon"]');

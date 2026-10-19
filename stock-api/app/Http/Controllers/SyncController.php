@@ -2,9 +2,11 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\CashSession;
 use App\Models\Category;
 use App\Models\Installment;
 use App\Models\InstallmentPayment;
+use App\Models\JournalEntry;
 use App\Models\Product;
 use App\Models\PurchaseOrder;
 use App\Models\Sale;
@@ -44,25 +46,34 @@ class SyncController extends Controller
 
     /** Droits des rôles non administrateurs : entité => actions */
     private const PERMISSIONS = [
-        'seller' => ['sale' => ['upsert'], 'customer' => ['upsert', 'delete'], 'installment' => ['upsert'], 'payment' => ['upsert'], 'movement' => ['upsert'], 'task' => ['upsert']],
+        'seller' => ['cashSession' => ['upsert'], 'sale' => ['upsert'], 'customer' => ['upsert', 'delete'], 'installment' => ['upsert'], 'payment' => ['upsert'], 'movement' => ['upsert'], 'task' => ['upsert']],
         'technician' => ['task' => ['upsert'], 'history' => ['upsert'], 'sheet' => ['upsert']],
+        // Comptable : saisies comptables uniquement (ni ventes, ni stock, ni prix)
+        'accountant' => ['expense' => ['upsert', 'delete'], 'supplierPayment' => ['upsert', 'delete'], 'journalEntry' => ['upsert', 'delete']],
     ];
 
     /** Champs modifiables par entité (camelCase, format du front) */
     private const FIELDS = [
-        'product' => ['sku', 'name', 'category', 'supplierId', 'price', 'minPrice', 'cost', 'alertThreshold', 'image', 'description'],
+        'product' => ['sku', 'barcode', 'name', 'category', 'supplierId', 'price', 'minPrice', 'cost', 'alertThreshold', 'image', 'description'],
         'supplier' => ['name', 'contact', 'phone', 'email', 'category', 'address', 'status', 'rating', 'delay', 'notes'],
         'customer' => ['name', 'phone', 'email', 'city', 'notes'],
         'installment' => ['saleId', 'customerId', 'customerName', 'label', 'total', 'dueDate', 'sellerId', 'notes', 'cancelled'],
         'task' => ['product', 'task', 'date', 'status', 'assignedTo', 'technicianId', 'costEstimate', 'source', 'reportedBy'],
         'history' => ['product', 'action', 'technician', 'technicianId', 'date', 'cost', 'note'],
         'sheet' => ['product', 'model', 'info', 'originalValue', 'purchaseDate'],
+        'expense' => ['date', 'account', 'label', 'amount', 'vat', 'method', 'supplierId', 'reference', 'note', 'maintenanceHistoryId'],
+        'supplierPayment' => ['date', 'supplierId', 'purchaseOrderId', 'amount', 'method', 'note'],
     ];
 
-    private const DATES = ['date', 'dueDate', 'purchaseDate', 'expectedAt', 'receivedAt', 'cancelledAt'];
+    /** Compte du plan SYSCOHADA (classe 1 à 8) */
+    private const ACCOUNT_RULE = ['required', 'string', 'regex:/^[1-8][0-9]{1,7}$/'];
+
+    private const JOURNALS = ['AN', 'VE', 'AC', 'TR', 'OD'];
+
+    private const DATES = ['date', 'dueDate', 'purchaseDate', 'expectedAt', 'receivedAt', 'cancelledAt', 'openedAt', 'closedAt'];
 
     /** Colonnes NOT NULL avec valeur par défaut : un null reçu est ignoré */
-    private const NOT_NULL = ['price', 'min_price', 'cost', 'alert_threshold', 'rating', 'delay', 'status', 'cost_estimate', 'original_value', 'source', 'cancelled'];
+    private const NOT_NULL = ['price', 'min_price', 'cost', 'alert_threshold', 'rating', 'delay', 'status', 'cost_estimate', 'original_value', 'source', 'cancelled', 'vat', 'opening_float'];
 
     public const TASK_STATUSES = ['Signalé', 'Planifié', 'En cours', 'À remplacer', 'Terminé'];
 
@@ -176,6 +187,8 @@ class SyncController extends Controller
             $entity === 'purchaseOrder' => $this->upsertPurchaseOrder($id, $data),
             $entity === 'task' => $this->upsertTask($id, $data),
             $entity === 'installment' => $this->upsertInstallment($id, $data),
+            $entity === 'journalEntry' => $this->upsertJournalEntry($id, $data),
+            $entity === 'cashSession' => $this->upsertCashSession($id, $data),
             default => $this->upsert($entity, $id, $data),
         };
     }
@@ -358,6 +371,91 @@ class SyncController extends Controller
         $this->upsert('installment', $id, $data, $forced);
     }
 
+    /** Écriture manuelle : au moins deux lignes, chacune au débit OU au crédit, total débit = total crédit. */
+    private function upsertJournalEntry(string $id, array $data): void
+    {
+        $columns = $this->validated($data, [
+            'date' => ['required', 'date'],
+            'journal' => ['required', Rule::in(self::JOURNALS)],
+            'label' => ['required', 'string', 'max:255'],
+            'reference' => ['nullable', 'string', 'max:60'],
+            'lines' => ['required', 'array', 'min:2', 'max:50'],
+            'lines.*.account' => self::ACCOUNT_RULE,
+            'lines.*.label' => ['nullable', 'string', 'max:255'],
+            'lines.*.debit' => ['required', 'integer', 'min:0'],
+            'lines.*.credit' => ['required', 'integer', 'min:0'],
+        ], ['date', 'journal', 'label', 'reference', 'lines']);
+
+        $lines = array_map(fn ($line) => [
+            'account' => $line['account'],
+            'label' => $line['label'] ?? '',
+            'debit' => (int) $line['debit'],
+            'credit' => (int) $line['credit'],
+        ], $columns['lines']);
+
+        foreach ($lines as $line) {
+            if (($line['debit'] > 0) === ($line['credit'] > 0)) {
+                throw new SyncRejected('Chaque ligne doit avoir un montant au débit ou au crédit (pas les deux).');
+            }
+        }
+        $debit = array_sum(array_column($lines, 'debit'));
+        if ($debit !== array_sum(array_column($lines, 'credit'))) {
+            throw new SyncRejected('Écriture déséquilibrée : le total des débits doit égaler le total des crédits.');
+        }
+
+        $entry = JournalEntry::find($id) ?? new JournalEntry();
+        $entry->fill([...$columns, 'lines' => $lines]);
+        $entry->id = $id;
+        $entry->save();
+        self::log('journalEntry', $id);
+    }
+
+    /**
+     * Session de caisse d'un vendeur : ouverture (fond de caisse), mouvements, clôture (comptage, écart).
+     * Un vendeur ne gère que sa caisse, une seule ouverte à la fois, et ne modifie plus une caisse clôturée.
+     */
+    private function upsertCashSession(string $id, array $data): void
+    {
+        $existing = CashSession::find($id);
+        $isSeller = $this->user->role === 'seller';
+        if ($isSeller && $existing && ($existing->seller_id !== $this->user->id || $existing->status === 'closed')) {
+            throw new SyncRejected('Cette caisse ne peut plus être modifiée.');
+        }
+
+        $columns = $this->validated($data, [
+            'sellerId' => [$isSeller ? 'nullable' : 'required', 'string', 'max:40'],
+            'status' => ['required', Rule::in(['open', 'closed'])],
+            'openedAt' => ['required', 'date'],
+            'closedAt' => ['nullable', 'date', 'required_if:status,closed'],
+            'openingFloat' => ['nullable', 'integer', 'min:0'],
+            'movements' => ['nullable', 'array', 'max:300'],
+            'movements.*.id' => ['required', 'string', 'max:40'],
+            'movements.*.type' => ['required', Rule::in(['deposit', 'expense', 'in'])],
+            'movements.*.amount' => ['required', 'integer', 'min:1'],
+            'movements.*.reason' => ['nullable', 'string', 'max:255'],
+            'movements.*.at' => ['required', 'date'],
+            'expectedCash' => ['nullable', 'integer', 'min:0'],
+            'countedCash' => ['nullable', 'integer', 'min:0'],
+            'difference' => ['nullable', 'integer'],
+            'denominations' => ['nullable', 'array', 'max:20'],
+            'note' => ['nullable', 'string', 'max:2000'],
+        ], ['sellerId', 'status', 'openedAt', 'closedAt', 'openingFloat', 'movements', 'expectedCash', 'countedCash', 'difference', 'denominations', 'note']);
+
+        if ($isSeller) {
+            $columns['seller_id'] = $this->user->id;
+        }
+        $sellerId = $columns['seller_id'] ?? $existing?->seller_id;
+        if ($columns['status'] === 'open' && CashSession::where('seller_id', $sellerId)->where('status', 'open')->where('id', '!=', $id)->exists()) {
+            throw new SyncRejected("Une caisse est déjà ouverte pour ce vendeur : clôturez-la d'abord.");
+        }
+
+        $session = $existing ?? new CashSession();
+        $session->fill($columns);
+        $session->id = $id;
+        $session->save();
+        self::log('cashSession', $id);
+    }
+
     private function upsertPayment(string $id, array $data): void
     {
         $columns = $this->validated($data, [
@@ -366,7 +464,11 @@ class SyncController extends Controller
             'amount' => ['required', 'integer', 'min:0'],
             'method' => ['required', 'string', 'max:20'],
             'note' => ['nullable', 'string', 'max:255'],
-        ], ['installmentId', 'date', 'amount', 'method', 'note']);
+            'receivedBy' => ['nullable', 'string', 'max:40'],
+        ], ['installmentId', 'date', 'amount', 'method', 'note', 'receivedBy']);
+        if ($this->user->role === 'seller') {
+            $columns['received_by'] = $this->user->id;
+        }
 
         $installment = Installment::find($columns['installment_id']);
         if (! $installment) {
@@ -447,6 +549,7 @@ class SyncController extends Controller
             'product' => [
                 'name' => ['required', 'string', 'max:255'],
                 'sku' => ['nullable', 'string', 'max:60'],
+                'barcode' => ['nullable', 'string', 'max:64'],
                 'category' => ['nullable', 'string', 'max:100'],
                 'supplierId' => ['nullable', 'string', 'max:40'],
                 'price' => ['nullable', 'integer', 'min:0'],
@@ -512,6 +615,26 @@ class SyncController extends Controller
                 'info' => ['nullable', 'string', 'max:5000'],
                 'originalValue' => ['nullable', 'integer', 'min:0'],
                 'purchaseDate' => ['nullable', 'date'],
+            ],
+            'expense' => [
+                'date' => ['required', 'date'],
+                'account' => self::ACCOUNT_RULE,
+                'label' => ['required', 'string', 'max:255'],
+                'amount' => ['required', 'integer', 'min:1'],
+                'vat' => ['nullable', 'integer', 'min:0', 'lte:amount'],
+                'method' => ['required', Rule::in(['cash', 'mobile', 'card', 'transfer', 'unpaid'])],
+                'supplierId' => ['nullable', 'string', 'max:40'],
+                'reference' => ['nullable', 'string', 'max:60'],
+                'note' => ['nullable', 'string', 'max:2000'],
+                'maintenanceHistoryId' => ['nullable', 'string', 'max:40'],
+            ],
+            'supplierPayment' => [
+                'date' => ['required', 'date'],
+                'supplierId' => ['nullable', 'string', 'max:40'],
+                'purchaseOrderId' => ['nullable', 'string', 'max:40'],
+                'amount' => ['required', 'integer', 'min:1'],
+                'method' => ['required', Rule::in(['cash', 'mobile', 'card', 'transfer'])],
+                'note' => ['nullable', 'string', 'max:2000'],
             ],
         };
     }

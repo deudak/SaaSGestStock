@@ -12,7 +12,8 @@ Application de gestion de boutique : point de vente, stock, approvisionnements, 
 - **Multi-entreprises** : chaque inscription crée une entreprise. Toutes les tables portent un `company_id`
   et chaque requête est filtrée automatiquement sur l'entreprise de l'utilisateur
   (`app/Models/Concerns/BelongsToCompany.php`). Nom, logo, couleur et paramètres sont propres à chaque entreprise.
-- **Rôles** : `admin` (tout), `seller` (point de vente, clients, signalements), `technician` (maintenancier :
+- **Rôles** : `admin` (tout), `seller` (point de vente, clients, signalements), `accountant` (comptable : espace
+  comptabilité, lit ventes et achats, saisit dépenses, règlements et écritures), `technician` (maintenancier :
   interventions et équipements uniquement, sans ventes ni stock ni prix).
 - **Hors ligne** : les données de l'entreprise sont gardées sur l'appareil (IndexedDB) ; l'application tourne
   jusqu'à 30 jours sans réseau.
@@ -24,6 +25,39 @@ Application de gestion de boutique : point de vente, stock, approvisionnements, 
   - Chaque appareil reçoit un code unique (`POST /api/devices`) qui préfixe ses numéros : `V-K7Q-0001`,
     `TR-K7Q-1`, `BC-K7Q-001` — deux appareils hors ligne ne créent jamais le même numéro.
   - Les versements sont envoyés un par un ; le montant payé d'une vente à crédit est recalculé par le serveur.
+
+## Scanner et caisse journalière
+
+- **Codes-barres** : champ « Code-barres » sur chaque produit. Au point de vente, une douchette USB/Bluetooth
+  fonctionne directement (code + Entrée) ; le bouton **Scanner** utilise la caméra (lecteur natif du navigateur,
+  sinon zxing en WebAssembly embarqué — fonctionne hors ligne et sur iPhone).
+- **Caisse journalière** : le vendeur ouvre sa caisse avec un fond de caisse avant de vendre, enregistre les
+  versements en banque, petites dépenses et apports, puis clôture en comptant les espèces (billet par billet).
+  L'écart est calculé, expliqué et imprimable (ticket Z). L'admin suit toutes les caisses (*Ventes → Caisses*).
+- Comptabilité : versements (521/571), petites dépenses (658/571), apports (571/471) et écarts de caisse
+  (manquant 658, excédent 758) sont passés automatiquement.
+
+## Langue et mode sombre
+
+- **Langues** : français et anglais (`stock-front/src/i18n`). Le texte français sert de clé : `t("Tableau de bord")` ;
+  la traduction anglaise est dans `i18n/en.js`. Une phrase absente du dictionnaire s'affiche en français.
+  Les intitulés des comptes OHADA restent en français (libellés officiels).
+- **Thème** : clair, sombre ou celui du système (`lib/theme.js`). Le mode sombre redéfinit les variables de
+  couleur dans `index.css` ; la couleur de marque de l'entreprise s'adapte au thème.
+- Choix par appareil : boutons FR/EN et soleil/lune dans l'en-tête et sur la page de connexion, ou *Mon profil → Préférences*.
+
+## Comptabilité (plan comptable OHADA)
+
+Espace administrateur → **Comptabilité**. Partie double, **plan comptable OHADA** (SYSCOHADA révisé 2017, classes 1 à 8), inventaire intermittent.
+
+- **Écritures automatiques** calculées à partir des opérations (`stock-front/src/lib/accounting/engine.js`) :
+  ventes (TVA séparée), annulations (contre-passation), encaissements des créances, réceptions fournisseurs,
+  variation de stock (valorisée au coût d'achat), bilan d'ouverture.
+- **Saisies comptables** synchronisées (admin uniquement) : dépenses, règlements fournisseurs,
+  écritures manuelles équilibrées, virements internes.
+- **États** : journal, grand livre, balance, compte de résultat, bilan, TVA — imprimables et exportables (Excel).
+- Tests du moteur : `npm test` dans `stock-front`. Contrôle sur des données réelles :
+  `node scripts/check-accounting.mjs <email> <mot de passe>`.
 
 ## Lancer l'API
 

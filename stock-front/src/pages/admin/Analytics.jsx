@@ -11,6 +11,8 @@ import { addDays, formatMoney, formatNumber, percentChange, startOfDay } from ".
 import { downloadCSV, todayStamp } from "../../lib/csv";
 import { activeSales, categoryBreakdown, dailySeries, monthlySeries, saleMargin, salesBetween, sumBy } from "../../store/selectors";
 
+import { locale, t } from "../../i18n/index.js";
+
 const periods = [
   { value: 30, label: "30 jours" },
   { value: 90, label: "90 jours" },
@@ -18,7 +20,8 @@ const periods = [
   { value: 365, label: "12 mois" },
 ];
 
-const weekdays = ["Lun", "Mar", "Mer", "Jeu", "Ven", "Sam", "Dim"];
+// Lundi → dimanche, dans la langue de l'interface (le 5 janvier 2026 est un lundi)
+const weekdays = () => Array.from({ length: 7 }, (_, i) => new Date(2026, 0, 5 + i).toLocaleDateString(locale(), { weekday: "short" }));
 
 export default function AdminAnalytics() {
   const { state } = useStore();
@@ -63,7 +66,7 @@ export default function AdminAnalytics() {
         customerMap.set(s.customerId, entry);
       });
 
-    const byWeekday = weekdays.map((label, index) => {
+    const byWeekday = weekdays().map((label, index) => {
       const list = current.filter((s) => (new Date(s.date).getDay() + 6) % 7 === index);
       return { label, revenue: sumBy(list, (s) => s.total), count: list.length };
     });
@@ -90,70 +93,68 @@ export default function AdminAnalytics() {
 
   const exportProducts = () =>
     downloadCSV(`analyse-produits-${days}j-${todayStamp()}`, data.products, [
-      { label: "Produit", value: (p) => p.name },
-      { label: "Quantité vendue", value: (p) => p.qty },
-      { label: "Chiffre d'affaires", value: (p) => p.revenue },
-      { label: "Marge brute", value: (p) => p.margin },
-      { label: "Taux de marge %", value: (p) => (p.revenue ? Math.round((p.margin / p.revenue) * 100) : 0) },
+      { label: t("Produit"), value: (p) => p.name },
+      { label: t("Quantité vendue"), value: (p) => p.qty },
+      { label: t("Chiffre d'affaires"), value: (p) => p.revenue },
+      { label: t("Marge brute"), value: (p) => p.margin },
+      { label: t("Taux de marge %"), value: (p) => (p.revenue ? Math.round((p.margin / p.revenue) * 100) : 0) },
     ]);
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Pilotage"
-        title="Statistiques"
-        description="Analyse des ventes, des marges et de la performance commerciale."
+        eyebrow={t("Pilotage")}
+        title={t("Statistiques")}
+        description={t("Analyse des ventes, des marges et de la performance commerciale.")}
         actions={
           <>
             <Tabs value={days} onChange={setDays} options={periods} size="sm" />
-            <Button variant="secondary" size="sm" icon={FaFileExport} onClick={exportProducts}>
-              Exporter
-            </Button>
+            <Button variant="secondary" size="sm" icon={FaFileExport} onClick={exportProducts}>{t("Exporter")}</Button>
           </>
         }
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard title="Chiffre d'affaires" value={formatMoney(data.revenue)} icon={FaMoneyBillWave} trend={percentChange(data.revenue, data.prevRevenue)} />
-        <StatCard title="Marge brute" value={formatMoney(data.margin)} icon={FaCoins} tone="green" trend={percentChange(data.margin, data.prevMargin)} />
-        <StatCard title="Panier moyen" value={formatMoney(data.basket)} icon={FaShoppingBasket} tone="violet" trend={percentChange(data.basket, data.prevBasket)} />
-        <StatCard title="Ventes" value={formatNumber(data.count)} icon={FaCreditCard} tone="amber" trend={percentChange(data.count, data.prevCount)} trendLabel={`${data.creditShare} % à crédit`} />
+        <StatCard title={t("Chiffre d'affaires")} value={formatMoney(data.revenue)} icon={FaMoneyBillWave} trend={percentChange(data.revenue, data.prevRevenue)} />
+        <StatCard title={t("Marge brute")} value={formatMoney(data.margin)} icon={FaCoins} tone="green" trend={percentChange(data.margin, data.prevMargin)} />
+        <StatCard title={t("Panier moyen")} value={formatMoney(data.basket)} icon={FaShoppingBasket} tone="violet" trend={percentChange(data.basket, data.prevBasket)} />
+        <StatCard title={t("Ventes")} value={formatNumber(data.count)} icon={FaCreditCard} tone="amber" trend={percentChange(data.count, data.prevCount)} trendLabel={t("{0} % à crédit", [data.creditShare])} />
       </div>
 
       <Card>
-        <CardHeader title="Évolution du chiffre d'affaires et de la marge" subtitle={days <= 90 ? "Par jour" : "Par mois"} icon={FaChartBar} />
+        <CardHeader title={t("Évolution du chiffre d'affaires et de la marge")} subtitle={days <= 90 ? t("Par jour") : t("Par mois")} icon={FaChartBar} />
         <RevenueChart data={data.series} height={300} />
       </Card>
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Ventes par catégorie" subtitle="Répartition du chiffre d'affaires" icon={FaLayerGroup} tone="violet" />
-          {data.categories.length ? <DonutChart data={data.categories} centerLabel="CA" /> : <EmptyState title="Aucune donnée" />}
+          <CardHeader title={t("Ventes par catégorie")} subtitle={t("Répartition du chiffre d'affaires")} icon={FaLayerGroup} tone="violet" />
+          {data.categories.length ? <DonutChart data={data.categories} centerLabel={t("CA")} /> : <EmptyState title={t("Aucune donnée")} />}
         </Card>
         <Card>
-          <CardHeader title="Activité par jour de la semaine" subtitle="Chiffre d'affaires cumulé" icon={FaCalendarWeek} tone="green" />
+          <CardHeader title={t("Activité par jour de la semaine")} subtitle={t("Chiffre d'affaires cumulé")} icon={FaCalendarWeek} tone="green" />
           <ColumnChart data={data.byWeekday} height={220} color="#059669" />
         </Card>
       </div>
 
       <Card padded={false}>
         <div className="p-5 pb-0">
-          <CardHeader title="Performance par produit" subtitle={`${data.products.length} produits vendus sur la période`} icon={FaTrophy} tone="amber" />
+          <CardHeader title={t("Performance par produit")} subtitle={t("{0} produits vendus sur la période", [data.products.length])} icon={FaTrophy} tone="amber" />
         </div>
         {data.products.length === 0 ? (
           <div className="p-5 pt-0">
-            <EmptyState title="Aucune vente sur la période" />
+            <EmptyState title={t("Aucune vente sur la période")} />
           </div>
         ) : (
           <div className="scrollbar-thin overflow-x-auto">
             <table className="w-full min-w-150 text-sm">
               <thead>
                 <tr className="border-y border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-5 py-3">Produit</th>
-                  <th className="px-5 py-3 text-right">Qté</th>
-                  <th className="px-5 py-3 text-right">CA</th>
-                  <th className="px-5 py-3 text-right">Marge</th>
-                  <th className="px-5 py-3">Part du CA</th>
+                  <th className="px-5 py-3">{t("Produit")}</th>
+                  <th className="px-5 py-3 text-right">{t("Qté")}</th>
+                  <th className="px-5 py-3 text-right">{t("CA")}</th>
+                  <th className="px-5 py-3 text-right">{t("Marge")}</th>
+                  <th className="px-5 py-3">{t("Part du CA")}</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
@@ -187,11 +188,11 @@ export default function AdminAnalytics() {
 
       <div className="grid gap-4 lg:grid-cols-2">
         <Card>
-          <CardHeader title="Classement des vendeurs" subtitle="Chiffre d'affaires sur la période" icon={FaUsers} tone="violet" />
-          {data.vendors.length ? <BarList data={data.vendors} sublabel={(v) => `${v.count} ventes`} color="bg-violet-500" /> : <EmptyState title="Aucune vente" />}
+          <CardHeader title={t("Classement des vendeurs")} subtitle={t("Chiffre d'affaires sur la période")} icon={FaUsers} tone="violet" />
+          {data.vendors.length ? <BarList data={data.vendors} sublabel={(v) => `${v.count} ventes`} color="bg-violet-500" /> : <EmptyState title={t("Aucune vente")} />}
         </Card>
         <Card>
-          <CardHeader title="Meilleurs clients" subtitle="Clients identifiés uniquement" icon={FaTrophy} tone="amber" />
+          <CardHeader title={t("Meilleurs clients")} subtitle={t("Clients identifiés uniquement")} icon={FaTrophy} tone="amber" />
           {data.customers.length ? (
             <ul className="space-y-3">
               {data.customers.map((c, i) => (
@@ -200,14 +201,14 @@ export default function AdminAnalytics() {
                   <Avatar name={c.name} size="sm" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-[13px] font-semibold text-slate-800">{c.name}</p>
-                    <p className="text-xs text-slate-500">{c.count} achat(s)</p>
+                    <p className="text-xs text-slate-500">{c.count}{" "}{t("achat(s)")}</p>
                   </div>
                   <span className="tabular text-[13px] font-semibold text-slate-900">{formatMoney(c.value)}</span>
                 </li>
               ))}
             </ul>
           ) : (
-            <EmptyState title="Aucun client identifié" />
+            <EmptyState title={t("Aucun client identifié")} />
           )}
         </Card>
       </div>

@@ -4,8 +4,10 @@ import { OFFLINE_LIMIT_DAYS, OFFLINE_WARNING_DAYS, useConnectivity } from "../..
 import { useStore } from "../../store/StoreContext";
 import Button from "../ui/Button";
 
+import { locale, t } from "../../i18n/index.js";
+
 const formatSync = (date) =>
-  date ? date.toLocaleString("fr-FR", { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "jamais";
+  date ? date.toLocaleString(locale(), { day: "numeric", month: "long", hour: "2-digit", minute: "2-digit" }) : "jamais";
 
 const plural = (n) => `${n} jour${n > 1 ? "s" : ""}`;
 
@@ -22,10 +24,10 @@ export function ConnectivityBadge({ sync }) {
   const warning = !online && daysLeft <= OFFLINE_WARNING_DAYS;
   const tone = online ? (pending ? "bg-sky-50 text-sky-700" : "bg-emerald-50 text-emerald-700") : warning ? "bg-rose-50 text-rose-700" : "bg-amber-50 text-amber-700";
   const dot = online ? (pending ? "bg-sky-500" : "bg-emerald-500") : warning ? "bg-rose-500" : "bg-amber-500";
-  const label = online ? (pending ? `Envoi · ${pending}` : "Synchronisé") : "Hors ligne";
+  const label = online ? (pending ? t("Envoi · {0}", [pending]) : t("Synchronisé")) : t("Hors ligne");
   const details = [
-    `Dernier contact avec le serveur : ${formatSync(lastSync)}`,
-    pending ? `${pending} modification${pending > 1 ? "s" : ""} en attente d'envoi` : "Aucune modification en attente",
+    t("Dernier contact avec le serveur : {0}", [formatSync(lastSync)]),
+    pending ? t(pending > 1 ? "{0} modifications en attente d'envoi" : "{0} modification en attente d'envoi", [pending]) : t("Aucune modification en attente"),
   ].join(" — ");
 
   return (
@@ -35,7 +37,7 @@ export function ConnectivityBadge({ sync }) {
         if (await checkNow()) sync?.syncNow();
       }}
       disabled={busy}
-      title={`${details}. Cliquer pour synchroniser.`}
+      title={t("{0}. Cliquer pour synchroniser.", [details])}
       className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-xs font-semibold transition hover:brightness-95 ${tone}`}
     >
       <span className={`h-2 w-2 rounded-full ${dot} ${busy ? "animate-pulse" : ""}`} />
@@ -47,7 +49,7 @@ export function ConnectivityBadge({ sync }) {
           <span className="hidden sm:inline">
             {" "}
             · {plural(daysLeft)}
-            {pending ? ` · ${pending} en attente` : ""}
+            {pending ? t(" · {0} en attente", [pending]) : ""}
           </span>
         </span>
       )}
@@ -63,10 +65,7 @@ export function OfflineBanner() {
   return (
     <div className="flex items-center gap-3 border-b border-amber-200 bg-amber-50 px-4 py-2.5 text-[13px] text-amber-800 sm:px-6 lg:px-8">
       <FaExclamationTriangle className="shrink-0" size={13} />
-      <p>
-        Mode hors ligne : il reste <strong>{plural(daysLeft)}</strong> avant le verrouillage de l'application. Connectez-vous à
-        internet pour synchroniser.
-      </p>
+      <p>{t("Mode hors ligne : il reste")}{" "}<strong>{plural(daysLeft)}</strong>{" "}{t("avant le verrouillage de l'application. Connectez-vous à internet pour synchroniser.")}</p>
     </div>
   );
 }
@@ -77,8 +76,8 @@ export function OfflineLock({ onLogout }) {
   const { actions } = useStore();
 
   const retry = async () => {
-    if (await checkNow()) toast.success("Connexion rétablie");
-    else toast.error("Serveur toujours injoignable");
+    if (await checkNow()) toast.success(t("Connexion rétablie"));
+    else toast.error(t("Serveur toujours injoignable"));
   };
 
   const backup = () => {
@@ -96,23 +95,17 @@ export function OfflineLock({ onLogout }) {
         <span className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-rose-50 text-rose-600">
           <FaWifi size={20} />
         </span>
-        <h1 className="mt-4 text-lg font-bold text-slate-900">Connexion requise</h1>
+        <h1 className="mt-4 text-lg font-bold text-slate-900">{t("Connexion requise")}</h1>
         <p className="mt-2 text-sm text-slate-600">
-          {clockTampered
-            ? "La date de cet appareil est antérieure à la dernière utilisation. Corrigez la date du système ou connectez-vous à internet."
-            : `L'application a fonctionné hors ligne pendant plus de ${OFFLINE_LIMIT_DAYS} jours. Connectez-vous à internet pour continuer.`}
+          {clockTampered ? t("La date de cet appareil est antérieure à la dernière utilisation. Corrigez la date du système ou connectez-vous à internet.") : t("L'application a fonctionné hors ligne pendant plus de {0} jours. Connectez-vous à internet pour continuer.", [OFFLINE_LIMIT_DAYS])}
         </p>
-        <p className="mt-1 text-xs text-slate-500">Dernière synchronisation : {formatSync(lastSync)}. Vos données sont conservées sur cet appareil.</p>
+        <p className="mt-1 text-xs text-slate-500">{t("Dernière synchronisation :")}{" "}{formatSync(lastSync)}{t(". Vos données sont conservées sur cet appareil.")}</p>
         <div className="mt-6 flex flex-col gap-2">
           <Button icon={FaSyncAlt} onClick={retry} disabled={checking}>
-            {checking ? "Vérification…" : "Réessayer la connexion"}
+            {checking ? t("Vérification…") : t("Réessayer la connexion")}
           </Button>
-          <Button variant="secondary" icon={FaDownload} onClick={backup}>
-            Télécharger une sauvegarde
-          </Button>
-          <Button variant="ghost" icon={FaSignOutAlt} onClick={onLogout}>
-            Déconnexion
-          </Button>
+          <Button variant="secondary" icon={FaDownload} onClick={backup}>{t("Télécharger une sauvegarde")}</Button>
+          <Button variant="ghost" icon={FaSignOutAlt} onClick={onLogout}>{t("Déconnexion")}</Button>
         </div>
       </div>
     </div>

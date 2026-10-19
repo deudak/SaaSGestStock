@@ -2,6 +2,8 @@ import { useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { FaTimes } from "react-icons/fa";
 
+import { t } from "../../i18n/index.js";
+
 const widths = {
   sm: "sm:max-w-sm",
   md: "sm:max-w-lg",
@@ -60,7 +62,7 @@ export default function Modal({ isOpen, onClose, title, description, size = "md"
             type="button"
             onClick={onClose}
             className="-mr-1 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
-            aria-label="Fermer"
+            aria-label={t("Fermer")}
           >
             <FaTimes size={14} />
           </button>

@@ -44,6 +44,8 @@ Route::middleware(['auth:sanctum', 'company'])->group(function () {
     Route::post('/sync', [SyncController::class, 'sync']);
     Route::post('/devices', [DeviceController::class, 'store']);
 
+    Route::put('/company/accounting', [CompanyController::class, 'updateAccounting'])->middleware('role:admin,accountant');
+
     Route::middleware('admin')->group(function () {
         Route::put('/company', [CompanyController::class, 'update']);
         Route::post('/users', [UserController::class, 'store']);

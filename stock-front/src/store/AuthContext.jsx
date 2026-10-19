@@ -5,6 +5,8 @@ import { apiRequest } from "../lib/api";
 import { readValue, writeValue } from "../lib/db";
 import { useConnectivity } from "./ConnectivityContext";
 
+import { t } from "../i18n/index.js";
+
 // Session de l'utilisateur : jeton API + utilisateur + entreprise (nom, logo, paramètres).
 // Tout est conservé sur l'appareil pour fonctionner hors ligne ; l'entreprise détermine
 // quelles données locales sont chargées (une base par entreprise).
@@ -47,6 +49,9 @@ async function forgetCredentials(email) {
   await writeValue(CREDENTIALS_KEY, all).catch(() => {});
 }
 
+const ACCOUNTING_KEYS = ["accountingStart", "openingCash", "openingBank", "openingMobile", "openingPayables"];
+const accountingSettings = (settings) => Object.fromEntries(ACCOUNTING_KEYS.map((key) => [key, settings[key]]));
+
 /** Convertit les paramètres du front (state.settings) en payload PUT /company. */
 export function settingsToCompanyPayload(settings) {
   const { shopName, logo, ...rest } = settings;
@@ -85,7 +90,7 @@ export function AuthProvider({ children }) {
     async (method, path, body) => {
       const result = await apiRequest(method, path, { body, token: sessionRef.current?.token });
       if (result.status === 401 && sessionRef.current) {
-        toast.error("Votre session a expiré. Reconnectez-vous.");
+        toast.error(t("Votre session a expiré. Reconnectez-vous."));
         await clearSession();
       }
       return result;
@@ -98,10 +103,14 @@ export function AuthProvider({ children }) {
     const current = sessionRef.current;
     if (!current?.token) return;
 
-    if (current.companyPending && current.user.role === "admin") {
-      const pushed = await api("PUT", "/company", settingsToCompanyPayload(current.companyPending));
+    if (current.companyPending && ["admin", "accountant"].includes(current.user.role)) {
+      // Le comptable ne modifie que les paramètres comptables (ouverture des comptes)
+      const pushed =
+        current.user.role === "admin"
+          ? await api("PUT", "/company", settingsToCompanyPayload(current.companyPending))
+          : await api("PUT", "/company/accounting", { settings: accountingSettings(current.companyPending) });
       if (pushed.network) return;
-      if (!pushed.ok) toast.error(`Paramètres non synchronisés : ${pushed.error}`);
+      if (!pushed.ok) toast.error(t("Paramètres non synchronisés : {0}", [pushed.error]));
       if (!sessionRef.current) return;
       await saveSession({ ...sessionRef.current, companyPending: null, company: pushed.ok ? pushed.data : sessionRef.current.company });
     }
@@ -128,9 +137,9 @@ export function AuthProvider({ children }) {
         // Hors ligne : on accepte un compte déjà connecté sur cet appareil
         const entry = ((await readValue(CREDENTIALS_KEY)) || {})[email.trim().toLowerCase()];
         if (!entry || !canHash()) {
-          return { ok: false, error: "Pas de connexion internet. La première connexion sur cet appareil doit se faire en ligne." };
+          return { ok: false, error: t("Pas de connexion internet. La première connexion sur cet appareil doit se faire en ligne.") };
         }
-        if ((await hashPassword(password, entry.salt)) !== entry.hash) return { ok: false, error: "Email ou mot de passe incorrect." };
+        if ((await hashPassword(password, entry.salt)) !== entry.hash) return { ok: false, error: t("Email ou mot de passe incorrect.") };
         await saveSession(entry.session);
         return { ok: true, user: entry.session.user, offline: true };
       }
@@ -151,7 +160,7 @@ export function AuthProvider({ children }) {
   const register = useCallback(
     async ({ shop, name, email, phone, password }) => {
       const result = await apiRequest("POST", "/auth/register", { body: { company_name: shop, name, email: email.trim(), phone, password } });
-      if (result.network) return { ok: false, error: "Connexion internet requise pour créer votre espace." };
+      if (result.network) return { ok: false, error: t("Connexion internet requise pour créer votre espace.") };
       if (!result.ok) return { ok: false, error: result.error };
       const next = { token: result.data.token, user: result.data.user, company: result.data.company, companyPending: null };
       await saveSession(next);
@@ -212,6 +221,6 @@ export function AuthProvider({ children }) {
 
 export function useAuth() {
   const context = useContext(AuthContext);
-  if (!context) throw new Error("useAuth doit être utilisé dans <AuthProvider>");
+  if (!context) throw new Error(t("useAuth doit être utilisé dans <AuthProvider>"));
   return context;
 }

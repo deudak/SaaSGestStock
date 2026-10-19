@@ -1,3 +1,4 @@
+import { t } from "../../i18n/index.js";
 /** Onglets segmentés. options : [{ value, label, count?, icon? }] */
 export default function Tabs({ value, onChange, options, className = "", size = "md" }) {
   const pad = size === "sm" ? "px-2.5 py-1.5 text-xs" : "px-3.5 py-2 text-sm";
@@ -19,7 +20,7 @@ export default function Tabs({ value, onChange, options, className = "", size = 
               }`}
             >
               {Icon && <Icon size={12} aria-hidden="true" />}
-              {option.label}
+              {t(option.label)}
               {option.count !== undefined && (
                 <span className={`rounded-md px-1.5 py-px text-[10px] font-bold tabular ${active ? "bg-brand-50 text-brand-700" : "bg-slate-200/70 text-slate-500"}`}>
                   {option.count}

@@ -6,6 +6,8 @@ import { readValue, requestPersistentStorage, writeValue } from "../lib/db";
 import { useAuth } from "./AuthContext";
 import { useConnectivity } from "./ConnectivityContext";
 
+import { t } from "../i18n/index.js";
+
 export { useAuth } from "./AuthContext";
 
 // Données métier de l'entreprise de l'utilisateur connecté, persistées sur l'appareil (IndexedDB)
@@ -35,6 +37,10 @@ const COLLECTIONS = {
   task: "maintenanceTasks",
   history: "maintenanceHistory",
   sheet: "techSheets",
+  expense: "expenses",
+  supplierPayment: "supplierPayments",
+  journalEntry: "journalEntries",
+  cashSession: "cashSessions",
 };
 
 const StoreContext = createContext(null);
@@ -196,7 +202,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
       })
       .catch(() => {
         // stockage plein ou indisponible : l'application continue en mémoire
-        if (!saveFailed.current) toast.error("Enregistrement local impossible : exportez une sauvegarde depuis les paramètres.");
+        if (!saveFailed.current) toast.error(t("Enregistrement local impossible : exportez une sauvegarde depuis les paramètres."));
         saveFailed.current = true;
       });
   }, [state, companyId]);
@@ -229,7 +235,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
       if (!result.ok) {
         // File refusée en bloc (données invalides) : on l'abandonne pour ne pas bloquer les suivantes
         if (ops.length) {
-          toast.error(`Synchronisation refusée : ${result.error}`);
+          toast.error(t("Synchronisation refusée : {0}", [result.error]));
           setState((prev) => ({ ...prev, outbox: prev.outbox.filter((op) => !sent.has(op.opId)) }));
         }
         return;
@@ -237,9 +243,9 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
 
       const { rejected = [], conflicts = [], changes = [], cursor, reset } = result.data;
       if (rejected.length) {
-        toast.error(rejected.length === 1 ? `Modification refusée : ${rejected[0].error}` : `${rejected.length} modifications refusées. Ex. : ${rejected[0].error}`);
+        toast.error(rejected.length === 1 ? t("Modification refusée : {0}", [rejected[0].error]) : t("{0} modifications refusées. Ex. : {1}", [rejected.length, rejected[0].error]));
       }
-      conflicts.forEach((c) => toast.error(`Stock insuffisant : « ${c.name} » est à ${c.stock}. Une vente a dépassé le stock réel.`, { id: `conflict-${c.productId}`, duration: 8000 }));
+      conflicts.forEach((c) => toast.error(t("Stock insuffisant : « {0} » est à {1}. Une vente a dépassé le stock réel.", [c.name, c.stock]), { id: `conflict-${c.productId}`, duration: 8000 }));
 
       if (reset) {
         // Trop de changements ou appareil jamais synchronisé : on recharge tout depuis le serveur
@@ -301,6 +307,20 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
     });
     const movementOp = (m) => ["movement", "upsert", m.id, m];
 
+    /** Création ou modification d'une donnée simple, puis mise en file. Renvoie son identifiant. */
+    const upsertRecord = (entity, key, prefix, data) => {
+      const id = data.id || uid(prefix);
+      update((prev) => {
+        const list = prev[key] || [];
+        const existing = list.find((r) => r.id === id);
+        const record = existing ? { ...existing, ...data, id } : { ...data, id, createdAt: new Date().toISOString() };
+        const next = existing ? list.map((r) => (r.id === id ? record : r)) : [record, ...list];
+        return queue({ ...prev, [key]: next }, [entity, "upsert", id, record]);
+      });
+      return id;
+    };
+    const removeRecord = (entity, key, id) => update((prev) => queue({ ...prev, [key]: (prev[key] || []).filter((r) => r.id !== id) }, [entity, "delete", id]));
+
     return {
       // ---------- Session ----------
       logout,
@@ -319,20 +339,20 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
         } else {
           result = await api("POST", "/users", { role: "seller", status: "actif", ...data });
         }
-        if (!result.ok) return { ok: false, error: result.network ? "Connexion internet requise pour gérer les comptes." : result.error };
+        if (!result.ok) return { ok: false, error: result.network ? t("Connexion internet requise pour gérer les comptes.") : result.error };
         replaceUser(result.data);
         if (isSelf) setUser(result.data);
         return { ok: true, user: result.data };
       },
       async deleteUser(id) {
         const result = await api("DELETE", `/users/${id}`);
-        if (!result.ok) return { ok: false, error: result.network ? "Connexion internet requise pour gérer les comptes." : result.error };
+        if (!result.ok) return { ok: false, error: result.network ? t("Connexion internet requise pour gérer les comptes.") : result.error };
         update((prev) => ({ ...prev, users: prev.users.filter((u) => u.id !== id) }));
         return { ok: true };
       },
       async changePassword(id, current, next) {
         const result = await api("PUT", "/me/password", { current_password: current, password: next });
-        if (!result.ok) return { ok: false, error: result.network ? "Connexion internet requise pour changer de mot de passe." : result.error };
+        if (!result.ok) return { ok: false, error: result.network ? t("Connexion internet requise pour changer de mot de passe.") : result.error };
         await rememberPassword(next);
         return { ok: true };
       },
@@ -506,7 +526,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
         const paid = mode === "credit" ? Math.min(total, deposit) : total;
         const installmentPrefix = `TR-${code}-`;
         const installmentId = mode === "credit" ? `${installmentPrefix}${nextNumber(state.installments.map((i) => i.id), installmentPrefix)}` : null;
-        const depositPayment = { id: uid("pay"), date: now, amount: paid, method, note: "Acompte" };
+        const depositPayment = { id: uid("pay"), date: now, amount: paid, method, note: "Acompte", receivedBy: sellerId };
 
         const sale = {
           id: saleId,
@@ -598,7 +618,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
         update((prev) => {
           const prefix = `TR-${code}-`;
           const id = `${prefix}${nextNumber(prev.installments.map((i) => i.id), prefix)}`;
-          const payments = data.deposit > 0 ? [{ id: uid("pay"), date: new Date().toISOString(), amount: data.deposit, method: data.method || "cash", note: "Acompte" }] : [];
+          const payments = data.deposit > 0 ? [{ id: uid("pay"), date: new Date().toISOString(), amount: data.deposit, method: data.method || "cash", note: "Acompte", receivedBy: currentUser?.id }] : [];
           const installment = { id, saleId: null, customerId: data.customerId, customerName: data.customerName, label: data.label, total: data.total, payments, dueDate: data.dueDate, sellerId: data.sellerId, createdAt: new Date().toISOString(), notes: data.notes || "" };
           return queue(
             { ...prev, installments: [installment, ...prev.installments] },
@@ -614,7 +634,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
         });
       },
       addInstallmentPayment(id, { amount, method, note, date }) {
-        const payment = { id: uid("pay"), date: date || new Date().toISOString(), amount, method, note };
+        const payment = { id: uid("pay"), date: date || new Date().toISOString(), amount, method, note, receivedBy: currentUser?.id };
         update((prev) =>
           queue(
             {
@@ -641,21 +661,21 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
       // ---------- Maintenance ----------
       saveMaintenanceTask(data) {
         update((prev) => {
-          const existing = data.id ? prev.maintenanceTasks.find((t) => t.id === data.id) : null;
+          const existing = data.id ? prev.maintenanceTasks.find((item) => item.id === data.id) : null;
           const task = existing
             ? { ...existing, ...data }
             : { source: "admin", reportedBy: null, technicianId: null, assignedTo: "", costEstimate: 0, ...data, id: data.id || uid("mt") };
-          const maintenanceTasks = existing ? prev.maintenanceTasks.map((t) => (t.id === task.id ? task : t)) : [task, ...prev.maintenanceTasks];
+          const maintenanceTasks = existing ? prev.maintenanceTasks.map((item) => (item.id === task.id ? task : item)) : [task, ...prev.maintenanceTasks];
           return queue({ ...prev, maintenanceTasks }, ["task", "upsert", task.id, task]);
         });
       },
       deleteMaintenanceTask(id) {
-        update((prev) => queue({ ...prev, maintenanceTasks: prev.maintenanceTasks.filter((t) => t.id !== id) }, ["task", "delete", id]));
+        update((prev) => queue({ ...prev, maintenanceTasks: prev.maintenanceTasks.filter((item) => item.id !== id) }, ["task", "delete", id]));
       },
       /** Clôture une intervention et l'archive dans l'historique avec son coût réel */
       completeMaintenanceTask(id, { cost, technician, note }) {
         update((prev) => {
-          const task = prev.maintenanceTasks.find((t) => t.id === id);
+          const task = prev.maintenanceTasks.find((item) => item.id === id);
           if (!task) return prev;
           const done = { ...task, status: "Terminé" };
           const entry = {
@@ -670,7 +690,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
           };
           const next = {
             ...prev,
-            maintenanceTasks: prev.maintenanceTasks.map((t) => (t.id === id ? done : t)),
+            maintenanceTasks: prev.maintenanceTasks.map((item) => (item.id === id ? done : item)),
             maintenanceHistory: [entry, ...prev.maintenanceHistory],
           };
           return queue(next, ["task", "upsert", id, done], ["history", "upsert", entry.id, entry]);
@@ -695,6 +715,54 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
         update((prev) => queue({ ...prev, techSheets: prev.techSheets.filter((s) => s.id !== id) }, ["sheet", "delete", id]));
       },
 
+      // ---------- Caisse journalière ----------
+      /** Ouvre la caisse du vendeur connecté avec son fond de caisse. */
+      openCashSession(openingFloat, note = "") {
+        const session = { id: uid("cs"), sellerId: currentUser.id, status: "open", openedAt: new Date().toISOString(), openingFloat: Math.max(0, Math.round(Number(openingFloat) || 0)), movements: [], note };
+        update((prev) => queue({ ...prev, cashSessions: [session, ...(prev.cashSessions || [])] }, ["cashSession", "upsert", session.id, session]));
+        return session;
+      },
+      /** Versement en banque, petite dépense ou apport pendant la session. */
+      addCashMovement(sessionId, { type, amount, reason }) {
+        update((prev) => {
+          const session = (prev.cashSessions || []).find((s) => s.id === sessionId);
+          if (!session || session.status !== "open") return prev;
+          const movement = { id: uid("cm"), type, amount: Math.round(Number(amount) || 0), reason: reason || "", at: new Date().toISOString() };
+          const next = { ...session, movements: [...(session.movements || []), movement] };
+          return queue({ ...prev, cashSessions: prev.cashSessions.map((s) => (s.id === sessionId ? next : s)) }, ["cashSession", "upsert", sessionId, next]);
+        });
+      },
+      /** Clôture : espèces comptées, écart avec les espèces attendues. */
+      closeCashSession(sessionId, { countedCash, expectedCash, denominations, note }) {
+        update((prev) => {
+          const session = (prev.cashSessions || []).find((s) => s.id === sessionId);
+          if (!session || session.status !== "open") return prev;
+          const counted = Math.max(0, Math.round(Number(countedCash) || 0));
+          const next = { ...session, status: "closed", closedAt: new Date().toISOString(), countedCash: counted, expectedCash: Math.max(0, Math.round(expectedCash)), difference: counted - Math.round(expectedCash), denominations: denominations || null, note: note || session.note || "" };
+          return queue({ ...prev, cashSessions: prev.cashSessions.map((s) => (s.id === sessionId ? next : s)) }, ["cashSession", "upsert", sessionId, next]);
+        });
+      },
+
+      // ---------- Comptabilité (administrateur) ----------
+      saveExpense(data) {
+        return upsertRecord("expense", "expenses", "ex", data);
+      },
+      deleteExpense(id) {
+        removeRecord("expense", "expenses", id);
+      },
+      saveSupplierPayment(data) {
+        return upsertRecord("supplierPayment", "supplierPayments", "sp", data);
+      },
+      deleteSupplierPayment(id) {
+        removeRecord("supplierPayment", "supplierPayments", id);
+      },
+      saveJournalEntry(data) {
+        return upsertRecord("journalEntry", "journalEntries", "je", data);
+      },
+      deleteJournalEntry(id) {
+        removeRecord("journalEntry", "journalEntries", id);
+      },
+
       // ---------- Paramètres & données ----------
       /** Identité et paramètres de l'entreprise : appliqués tout de suite, envoyés au serveur dès que possible. */
       saveSettings(patch) {
@@ -708,7 +776,7 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
       /** Remplace les données de cet appareil par celles du serveur. */
       async resetData() {
         const fresh = await fetchCompanyState(api);
-        if (!fresh) return { ok: false, error: "Connexion internet requise pour recharger les données." };
+        if (!fresh) return { ok: false, error: t("Connexion internet requise pour recharger les données.") };
         setState((prev) => ({ ...fresh, deviceCode: prev.deviceCode }));
         return { ok: true };
       },
@@ -722,6 +790,6 @@ function LoadedStoreProvider({ companyId, initialState, children }) {
 
 export function useStore() {
   const context = useContext(StoreContext);
-  if (!context) throw new Error("useStore doit être utilisé dans <StoreProvider>");
+  if (!context) throw new Error(t("useStore doit être utilisé dans <StoreProvider>"));
   return context;
 }

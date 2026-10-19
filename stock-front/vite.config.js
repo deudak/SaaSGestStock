@@ -27,7 +27,8 @@ export default defineConfig({
         ],
       },
       workbox: {
-        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2}'],
+        // .wasm : lecteur de codes-barres (zxing), disponible hors ligne
+        globPatterns: ['**/*.{js,css,html,svg,png,ico,woff2,wasm}'],
         navigateFallback: '/index.html',
         navigateFallbackDenylist: [/^\/api\//],
         maximumFileSizeToCacheInBytes: 5 * 1024 * 1024,

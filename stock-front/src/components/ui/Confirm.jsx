@@ -4,6 +4,8 @@ import { FaExclamationTriangle, FaQuestionCircle } from "react-icons/fa";
 import Modal from "./Modal";
 import Button from "./Button";
 
+import { t } from "../../i18n/index.js";
+
 const ConfirmContext = createContext(null);
 
 /**
@@ -15,7 +17,7 @@ export function ConfirmProvider({ children }) {
   const resolver = useRef(null);
 
   const confirm = useCallback((opts) => {
-    setOptions({ confirmLabel: "Confirmer", tone: "danger", ...opts });
+    setOptions({ confirmLabel: t("Confirmer"), tone: "danger", ...opts });
     return new Promise((resolve) => {
       resolver.current = resolve;
     });
@@ -40,9 +42,7 @@ export function ConfirmProvider({ children }) {
         size="sm"
         footer={
           <>
-            <Button variant="secondary" onClick={() => close(false)}>
-              Annuler
-            </Button>
+            <Button variant="secondary" onClick={() => close(false)}>{t("Annuler")}</Button>
             <Button variant={danger ? "danger" : "primary"} onClick={() => close(true)} autoFocus>
               {options?.confirmLabel}
             </Button>
@@ -62,6 +62,6 @@ export function ConfirmProvider({ children }) {
 
 export function useConfirm() {
   const context = useContext(ConfirmContext);
-  if (!context) throw new Error("useConfirm doit être utilisé dans <ConfirmProvider>");
+  if (!context) throw new Error(t("useConfirm doit être utilisé dans <ConfirmProvider>"));
   return context;
 }

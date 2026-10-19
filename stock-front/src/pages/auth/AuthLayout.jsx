@@ -1,5 +1,8 @@
 import { FaBoxes, FaCashRegister, FaChartLine, FaCreditCard } from "react-icons/fa";
 import logo from "../../assets/logo.svg";
+import { LanguageSwitch, ThemeSwitch } from "../../components/layout/Preferences";
+
+import { t } from "../../i18n/index.js";
 
 const features = [
   { icon: FaCashRegister, title: "Point de vente rapide", text: "Encaissez en quelques clics, imprimez tickets et factures." },
@@ -18,13 +21,11 @@ export default function AuthLayout({ children }) {
 
         <div className="relative flex items-center gap-3">
           <img src={logo} alt="" className="h-10 w-10 rounded-xl" />
-          <span className="text-lg font-bold tracking-tight">DYM Stock</span>
+          <span className="text-lg font-bold tracking-tight">{t("DYM Stock")}</span>
         </div>
 
         <div className="relative">
-          <h2 className="max-w-md text-[32px] font-bold leading-tight tracking-tight">
-            Gérez votre boutique, votre stock et vos créances sans effort.
-          </h2>
+          <h2 className="max-w-md text-[32px] font-bold leading-tight tracking-tight">{t("Gérez votre boutique, votre stock et vos créances sans effort.")}</h2>
           <ul className="mt-10 space-y-6">
             {features.map((feature) => (
               <li key={feature.title} className="flex gap-4">
@@ -32,22 +33,26 @@ export default function AuthLayout({ children }) {
                   <feature.icon size={15} />
                 </span>
                 <span>
-                  <span className="block text-sm font-semibold text-white">{feature.title}</span>
-                  <span className="mt-0.5 block text-sm text-slate-400">{feature.text}</span>
+                  <span className="block text-sm font-semibold text-white">{t(feature.title)}</span>
+                  <span className="mt-0.5 block text-sm text-slate-400">{t(feature.text)}</span>
                 </span>
               </li>
             ))}
           </ul>
         </div>
 
-        <p className="relative text-xs text-slate-500">© {new Date().getFullYear()} DYM Stock · Tous droits réservés</p>
+        <p className="relative text-xs text-slate-500">© {new Date().getFullYear()}{" "}{t("DYM Stock · Tous droits réservés")}</p>
       </aside>
 
-      <main className="flex flex-1 items-center justify-center px-5 py-10 sm:px-10">
+      <main className="relative flex flex-1 items-center justify-center px-5 py-10 sm:px-10">
+        <div className="absolute right-4 top-4 flex items-center">
+          <LanguageSwitch />
+          <ThemeSwitch />
+        </div>
         <div className="w-full max-w-[400px] animate-pop-in">
           <div className="mb-8 flex items-center gap-3 lg:hidden">
             <img src={logo} alt="" className="h-10 w-10 rounded-xl" />
-            <span className="text-lg font-bold tracking-tight text-slate-900">DYM Stock</span>
+            <span className="text-lg font-bold tracking-tight text-slate-900">{t("DYM Stock")}</span>
           </div>
           {children}
         </div>

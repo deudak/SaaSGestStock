@@ -3,6 +3,8 @@ import { formatCompact, formatMoney } from "../../lib/format";
 import { brandBase } from "../../lib/branding";
 import { useStore } from "../../store/StoreContext";
 
+import { t } from "../../i18n/index.js";
+
 const OTHER_COLORS = ["#059669", "#d97706", "#7c3aed", "#0284c7", "#e11d48", "#64748b"];
 
 const axisProps = {
@@ -49,15 +51,15 @@ export function RevenueChart({ data, height = 280, showMargin = true }) {
           <XAxis dataKey="label" {...axisProps} interval="preserveStartEnd" minTickGap={16} />
           <YAxis {...axisProps} tickFormatter={formatCompact} width={52} />
           <Tooltip content={<ChartTooltip />} cursor={{ stroke: "#cbd5e1", strokeDasharray: "4 4" }} />
-          <Area type="monotone" dataKey="revenue" name="Chiffre d'affaires" stroke={brand} strokeWidth={2.25} fill="url(#revenueFill)" activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }} />
-          {showMargin && <Area type="monotone" dataKey="margin" name="Marge brute" stroke="#059669" strokeWidth={2} fill="none" activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }} />}
+          <Area type="monotone" dataKey="revenue" name={t("Chiffre d'affaires")} stroke={brand} strokeWidth={2.25} fill="url(#revenueFill)" activeDot={{ r: 5, strokeWidth: 2, stroke: "#fff" }} />
+          {showMargin && <Area type="monotone" dataKey="margin" name={t("Marge brute")} stroke="#059669" strokeWidth={2} fill="none" activeDot={{ r: 4, strokeWidth: 2, stroke: "#fff" }} />}
         </AreaChart>
       </ResponsiveContainer>
     </div>
   );
 }
 
-export function ColumnChart({ data, dataKey = "revenue", name = "Chiffre d'affaires", height = 260, color, formatter = formatMoney }) {
+export function ColumnChart({ data, dataKey = "revenue", name = t("Chiffre d'affaires"), height = 260, color, formatter = formatMoney }) {
   const brand = useBrandColor();
   return (
     <div style={{ height }}>
@@ -75,7 +77,7 @@ export function ColumnChart({ data, dataKey = "revenue", name = "Chiffre d'affai
 }
 
 /** Anneau avec légende. data : [{ name, value }] */
-export function DonutChart({ data, formatter = formatMoney, centerLabel = "Total" }) {
+export function DonutChart({ data, formatter = formatMoney, centerLabel = t("Total") }) {
   const colors = [useBrandColor(), ...OTHER_COLORS];
   const total = data.reduce((sum, entry) => sum + entry.value, 0);
   return (

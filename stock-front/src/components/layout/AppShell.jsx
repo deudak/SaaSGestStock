@@ -11,6 +11,10 @@ import { extraTitles } from "../../routes/menus";
 import { useConnectivity } from "../../store/ConnectivityContext";
 import { ROLE_LABELS } from "../../store/selectors";
 import { ConnectivityBadge, OfflineBanner, OfflineLock } from "./OfflineStatus";
+import { LanguageSwitch, ThemeSwitch } from "./Preferences";
+import { useTheme } from "../../lib/theme";
+
+import { locale, t } from "../../i18n/index.js";
 
 const toneDot = {
   red: "bg-rose-50 text-rose-600",
@@ -30,7 +34,7 @@ function Sidebar({ menu, spaceLabel, isOpen, onClose, onLogout }) {
         className={`fixed inset-y-0 left-0 z-50 flex w-[264px] flex-col bg-ink-900 text-slate-300 transition-transform duration-300 lg:sticky lg:top-0 lg:z-auto lg:h-screen lg:translate-x-0 ${
           isOpen ? "translate-x-0 shadow-2xl" : "-translate-x-full"
         }`}
-        aria-label="Navigation principale"
+        aria-label={t("Navigation principale")}
       >
         <div className="flex h-16 items-center justify-between gap-3 px-5">
           <Link to="/" className="flex min-w-0 items-center gap-3" onClick={onClose}>
@@ -40,7 +44,7 @@ function Sidebar({ menu, spaceLabel, isOpen, onClose, onLogout }) {
               <p className="truncate text-[11px] font-medium text-slate-500">{spaceLabel}</p>
             </div>
           </Link>
-          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden" aria-label="Fermer le menu">
+          <button type="button" onClick={onClose} className="rounded-lg p-2 text-slate-400 hover:bg-white/5 hover:text-white lg:hidden" aria-label={t("Fermer le menu")}>
             <FaTimes size={14} />
           </button>
         </div>
@@ -48,7 +52,7 @@ function Sidebar({ menu, spaceLabel, isOpen, onClose, onLogout }) {
         <nav className="scrollbar-dark flex-1 space-y-6 overflow-y-auto px-3 py-4">
           {menu.map((section) => (
             <div key={section.title}>
-              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{section.title}</p>
+              <p className="mb-1.5 px-3 text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-500">{t(section.title)}</p>
               <div className="space-y-0.5">
                 {section.items.map((item) => (
                   <NavLink
@@ -66,7 +70,7 @@ function Sidebar({ menu, spaceLabel, isOpen, onClose, onLogout }) {
                       <>
                         {isActive && <span className="absolute inset-y-1.5 left-0 w-[3px] rounded-r-full bg-brand-500" />}
                         <item.icon size={15} className={isActive ? "text-brand-400" : "text-slate-500 group-hover:text-slate-300"} aria-hidden="true" />
-                        <span className="truncate">{item.label}</span>
+                        <span className="truncate">{t(item.label)}</span>
                       </>
                     )}
                   </NavLink>
@@ -82,9 +86,7 @@ function Sidebar({ menu, spaceLabel, isOpen, onClose, onLogout }) {
             onClick={onLogout}
             className="flex w-full items-center gap-3 rounded-lg px-3 py-2 text-[13px] font-medium text-slate-400 transition hover:bg-rose-500/10 hover:text-rose-300"
           >
-            <FaSignOutAlt size={15} aria-hidden="true" />
-            Déconnexion
-          </button>
+            <FaSignOutAlt size={15} aria-hidden="true" />{t("Déconnexion")}</button>
         </div>
       </aside>
     </>
@@ -104,7 +106,7 @@ function NotificationsMenu() {
         type="button"
         onClick={() => setOpen((v) => !v)}
         className="relative flex h-9 w-9 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
-        aria-label={`Notifications (${notifications.length})`}
+        aria-label={t("Notifications ({0})", [notifications.length])}
         aria-expanded={open}
       >
         <FaBell size={16} />
@@ -118,15 +120,15 @@ function NotificationsMenu() {
       {open && (
         <div className="absolute right-0 top-11 z-50 w-[min(92vw,380px)] animate-pop-in overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-pop">
           <div className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
-            <p className="text-sm font-semibold text-slate-900">Notifications</p>
-            <span className="text-xs text-slate-500">{notifications.length} alerte{notifications.length > 1 ? "s" : ""}</span>
+            <p className="text-sm font-semibold text-slate-900">{t("Notifications")}</p>
+            <span className="text-xs text-slate-500">{notifications.length}{" "}{t("alerte")}{notifications.length > 1 ? "s" : ""}</span>
           </div>
           <div className="scrollbar-thin max-h-[60vh] overflow-y-auto">
             {notifications.length === 0 ? (
               <div className="flex flex-col items-center gap-2 px-6 py-10 text-center">
                 <FaCheckCircle className="text-emerald-500" size={22} />
-                <p className="text-sm font-medium text-slate-700">Tout est en ordre</p>
-                <p className="text-xs text-slate-500">Aucune alerte de stock, de paiement ou de maintenance.</p>
+                <p className="text-sm font-medium text-slate-700">{t("Tout est en ordre")}</p>
+                <p className="text-xs text-slate-500">{t("Aucune alerte de stock, de paiement ou de maintenance.")}</p>
               </div>
             ) : (
               notifications.map((item) => (
@@ -135,8 +137,8 @@ function NotificationsMenu() {
                     <item.icon size={13} />
                   </span>
                   <span className="min-w-0">
-                    <span className="block truncate text-[13px] font-semibold text-slate-800">{item.title}</span>
-                    <span className="block truncate text-xs text-slate-500">{item.detail}</span>
+                    <span className="block truncate text-[13px] font-semibold text-slate-800">{t(item.title)}</span>
+                    <span className="block truncate text-xs text-slate-500">{t(item.detail)}</span>
                   </span>
                 </Link>
               ))
@@ -178,16 +180,13 @@ function UserMenu({ user, base, onLogout }) {
           </div>
           <div className="my-1 h-px bg-slate-100" />
           <Link to={`${base}/profile`} onClick={close} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-            <FaUser size={12} className="text-slate-400" /> Mon profil
-          </Link>
+            <FaUser size={12} className="text-slate-400" />{" "}{t("Mon profil")}</Link>
           {user.role === "admin" && (
             <Link to="/admin/settings" onClick={close} className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-slate-700 hover:bg-slate-50">
-              <FaCog size={12} className="text-slate-400" /> Paramètres
-            </Link>
+              <FaCog size={12} className="text-slate-400" />{" "}{t("Paramètres")}</Link>
           )}
           <button type="button" onClick={onLogout} className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm text-rose-600 hover:bg-rose-50">
-            <FaSignOutAlt size={12} /> Déconnexion
-          </button>
+            <FaSignOutAlt size={12} />{" "}{t("Déconnexion")}</button>
         </div>
       )}
     </div>
@@ -206,7 +205,8 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const { state, currentUser, actions, sync } = useStore();
   const { shopName } = state.settings;
-  useBranding(state.settings);
+  const { theme } = useTheme();
+  useBranding(state.settings, theme);
   const location = useLocation();
   const navigate = useNavigate();
   const mainRef = useRef(null);
@@ -248,14 +248,14 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
               type="button"
               onClick={() => setSidebarOpen(true)}
               className="-ml-1 flex h-9 w-9 items-center justify-center rounded-lg text-slate-600 hover:bg-slate-100 lg:hidden"
-              aria-label="Ouvrir le menu"
+              aria-label={t("Ouvrir le menu")}
             >
               <FaBars size={16} />
             </button>
             <div className="min-w-0 flex-1">
               <p className="truncate text-[15px] font-semibold text-slate-900">{pageTitle}</p>
               <p className="hidden truncate text-xs text-slate-500 sm:block">
-                {new Date().toLocaleDateString("fr-FR", { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
+                {new Date().toLocaleDateString(locale(), { weekday: "long", day: "numeric", month: "long", year: "numeric" })}
               </p>
             </div>
 
@@ -264,10 +264,13 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
                 to="/seller/pos"
                 className="hidden h-9 items-center gap-2 rounded-xl bg-brand-600 px-3.5 text-[13px] font-semibold text-white shadow-sm shadow-brand-600/20 transition hover:bg-brand-700 sm:inline-flex"
               >
-                <FaCashRegister size={13} /> Nouvelle vente
-              </Link>
+                <FaCashRegister size={13} />{" "}{t("Nouvelle vente")}</Link>
             )}
             <ConnectivityBadge sync={sync} />
+            <div className="hidden items-center sm:flex">
+              <LanguageSwitch />
+              <ThemeSwitch />
+            </div>
             <NotificationsMenu />
             {currentUser && <UserMenu user={currentUser} base={base} onLogout={handleLogout} />}
           </div>
@@ -283,7 +286,7 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
         </main>
       </div>
 
-      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden" aria-label="Navigation mobile">
+      <nav className="fixed inset-x-0 bottom-0 z-30 border-t border-slate-200 bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur-md lg:hidden" aria-label={t("Navigation mobile")}>
         <div className="mx-auto flex max-w-lg items-stretch justify-around px-2">
           {mobileNav.map((item) =>
             item.openMenu ? (
@@ -294,7 +297,7 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
                 className="flex flex-1 flex-col items-center gap-1 py-2.5 text-[10px] font-semibold text-slate-500"
               >
                 <item.icon size={17} />
-                {item.label}
+                {t(item.label)}
               </button>
             ) : (
               <NavLink
@@ -309,12 +312,12 @@ export default function AppShell({ menu, mobileNav, spaceLabel, base }) {
                       <span className={`-mt-5 flex h-11 w-11 items-center justify-center rounded-2xl text-white shadow-lg ring-4 ring-white ${isActive ? "bg-brand-700" : "bg-brand-600"} shadow-brand-600/30`}>
                         <item.icon size={17} />
                       </span>
-                      {item.label}
+                      {t(item.label)}
                     </>
                   ) : (
                     <>
                       <item.icon size={17} />
-                      {item.label}
+                      {t(item.label)}
                     </>
                   )
                 }

@@ -29,6 +29,8 @@ import { Field, Input, Select, Textarea } from "../../components/ui/Form";
 import { formatDate, formatMoney, formatRelative, toDateInput } from "../../lib/format";
 import { MAINTENANCE_STATUS, openMaintenance, sumBy } from "../../store/selectors";
 
+import { t } from "../../i18n/index.js";
+
 const TASK_STATUSES = ["Signalé", "Planifié", "En cours", "À remplacer", "Terminé"];
 
 function useForm(initial) {
@@ -37,12 +39,10 @@ function useForm(initial) {
   return [form, set, setForm];
 }
 
-function FormFooter({ onCancel, label = "Enregistrer" }) {
+function FormFooter({ onCancel, label = t("Enregistrer") }) {
   return (
     <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-      <Button variant="secondary" onClick={onCancel}>
-        Annuler
-      </Button>
+      <Button variant="secondary" onClick={onCancel}>{t("Annuler")}</Button>
       <Button type="submit" icon={FaCheck}>
         {label}
       </Button>
@@ -57,8 +57,8 @@ function TaskForm({ initial, equipment, technicians, onSubmit, onCancel }) {
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!form.product.trim() || !form.task.trim()) return toast.error("Équipement et description requis.");
-        const technician = technicians.find((t) => t.id === form.technicianId);
+        if (!form.product.trim() || !form.task.trim()) return toast.error(t("Équipement et description requis."));
+        const technician = technicians.find((item) => item.id === form.technicianId);
         onSubmit({
           ...form,
           technicianId: technician ? technician.id : null,
@@ -68,40 +68,40 @@ function TaskForm({ initial, equipment, technicians, onSubmit, onCancel }) {
         });
       }}
     >
-      <Field label="Équipement" required>
-        <Input list="equipment-list" value={form.product} onChange={set("product")} placeholder="Ex : Climatiseur boutique Akwa" />
+      <Field label={t("Équipement")} required>
+        <Input list="equipment-list" value={form.product} onChange={set("product")} placeholder={t("Ex : Climatiseur boutique Akwa")} />
       </Field>
       <datalist id="equipment-list">
         {equipment.map((name) => (
           <option key={name} value={name} />
         ))}
       </datalist>
-      <Field label="Intervention" required>
-        <Textarea value={form.task} onChange={set("task")} rows={2} placeholder="Nature de l'intervention ou du problème" />
+      <Field label={t("Intervention")} required>
+        <Textarea value={form.task} onChange={set("task")} rows={2} placeholder={t("Nature de l'intervention ou du problème")} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Date prévue">
+        <Field label={t("Date prévue")}>
           <Input type="date" value={form.date} onChange={set("date")} />
         </Field>
-        <Field label="Statut">
+        <Field label={t("Statut")}>
           <Select value={form.status} onChange={set("status")}>
             {TASK_STATUSES.filter((s) => s !== "Terminé").map((s) => (
-              <option key={s}>{s}</option>
+              <option key={s} value={s}>{t(s)}</option>
             ))}
           </Select>
         </Field>
-        <Field label="Technicien" hint={technicians.length ? "Le maintenancier la verra dans son espace." : "Créez des comptes maintenanciers dans Équipe."}>
+        <Field label={t("Technicien")} hint={technicians.length ? t("Le maintenancier la verra dans son espace.") : t("Créez des comptes maintenanciers dans Équipe.")}>
           <Select value={form.technicianId} onChange={set("technicianId")}>
-            <option value="">Prestataire externe / non assigné</option>
-            {technicians.map((t) => (
-              <option key={t.id} value={t.id}>
-                {t.name}
+            <option value="">{t("Prestataire externe / non assigné")}</option>
+            {technicians.map((item) => (
+              <option key={item.id} value={item.id}>
+                {item.name}
               </option>
             ))}
           </Select>
-          {!form.technicianId && <Input value={form.assignedTo} onChange={set("assignedTo")} placeholder="Nom du prestataire (facultatif)" className="mt-2" />}
+          {!form.technicianId && <Input value={form.assignedTo} onChange={set("assignedTo")} placeholder={t("Nom du prestataire (facultatif)")} className="mt-2" />}
         </Field>
-        <Field label="Coût estimé">
+        <Field label={t("Coût estimé")}>
           <Input type="number" min="0" value={form.costEstimate} onChange={set("costEstimate")} suffix="F" />
         </Field>
       </div>
@@ -125,17 +125,17 @@ function CompleteForm({ task, onSubmit, onCancel }) {
         <p className="text-slate-600">{task.task}</p>
       </div>
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Coût réel" hint="Archivé dans l'historique">
+        <Field label={t("Coût réel")} hint={t("Archivé dans l'historique")}>
           <Input type="number" min="0" value={form.cost} onChange={set("cost")} suffix="F" />
         </Field>
-        <Field label="Technicien">
+        <Field label={t("Technicien")}>
           <Input value={form.technician} onChange={set("technician")} />
         </Field>
       </div>
-      <Field label="Compte rendu">
-        <Textarea value={form.note} onChange={set("note")} rows={2} placeholder="Pièces changées, garantie…" />
+      <Field label={t("Compte rendu")}>
+        <Textarea value={form.note} onChange={set("note")} rows={2} placeholder={t("Pièces changées, garantie…")} />
       </Field>
-      <FormFooter onCancel={onCancel} label="Clôturer l'intervention" />
+      <FormFooter onCancel={onCancel} label={t("Clôturer l'intervention")} />
     </form>
   );
 }
@@ -147,11 +147,11 @@ function HistoryForm({ equipment, onSubmit, onCancel }) {
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!form.product.trim() || !form.action.trim()) return toast.error("Équipement et action requis.");
+        if (!form.product.trim() || !form.action.trim()) return toast.error(t("Équipement et action requis."));
         onSubmit({ ...form, date: new Date(form.date).toISOString(), cost: Number(form.cost) || 0 });
       }}
     >
-      <Field label="Équipement" required>
+      <Field label={t("Équipement")} required>
         <Input list="equipment-list-h" value={form.product} onChange={set("product")} />
       </Field>
       <datalist id="equipment-list-h">
@@ -159,24 +159,24 @@ function HistoryForm({ equipment, onSubmit, onCancel }) {
           <option key={name} value={name} />
         ))}
       </datalist>
-      <Field label="Action réalisée" required>
-        <Input value={form.action} onChange={set("action")} placeholder="Ex : Remplacement de la carte mère" />
+      <Field label={t("Action réalisée")} required>
+        <Input value={form.action} onChange={set("action")} placeholder={t("Ex : Remplacement de la carte mère")} />
       </Field>
       <div className="grid gap-4 sm:grid-cols-3">
-        <Field label="Technicien">
+        <Field label={t("Technicien")}>
           <Input value={form.technician} onChange={set("technician")} />
         </Field>
-        <Field label="Date">
+        <Field label={t("Date")}>
           <Input type="date" value={form.date} onChange={set("date")} />
         </Field>
-        <Field label="Coût">
+        <Field label={t("Coût")}>
           <Input type="number" min="0" value={form.cost} onChange={set("cost")} suffix="F" />
         </Field>
       </div>
-      <Field label="Note">
+      <Field label={t("Note")}>
         <Textarea value={form.note} onChange={set("note")} rows={2} />
       </Field>
-      <FormFooter onCancel={onCancel} label="Archiver" />
+      <FormFooter onCancel={onCancel} label={t("Archiver")} />
     </form>
   );
 }
@@ -188,25 +188,25 @@ function SheetForm({ initial, onSubmit, onCancel }) {
       className="space-y-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (!form.product.trim()) return toast.error("Nom de l'équipement requis.");
+        if (!form.product.trim()) return toast.error(t("Nom de l'équipement requis."));
         onSubmit({ ...form, originalValue: Number(form.originalValue) || 0, purchaseDate: new Date(form.purchaseDate).toISOString() });
       }}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Équipement" required>
-          <Input value={form.product} onChange={set("product")} placeholder="Climatiseur Samsung" />
+        <Field label={t("Équipement")} required>
+          <Input value={form.product} onChange={set("product")} placeholder={t("Climatiseur Samsung")} />
         </Field>
-        <Field label="Modèle / n° de série">
-          <Input value={form.model} onChange={set("model")} placeholder="AR18 WindFree" />
+        <Field label={t("Modèle / n° de série")}>
+          <Input value={form.model} onChange={set("model")} placeholder={t("AR18 WindFree")} />
         </Field>
-        <Field label="Valeur d'achat">
+        <Field label={t("Valeur d'achat")}>
           <Input type="number" min="0" value={form.originalValue} onChange={set("originalValue")} suffix="F" />
         </Field>
-        <Field label="Date d'acquisition">
+        <Field label={t("Date d'acquisition")}>
           <Input type="date" value={form.purchaseDate} onChange={set("purchaseDate")} />
         </Field>
       </div>
-      <Field label="Caractéristiques techniques">
+      <Field label={t("Caractéristiques techniques")}>
         <Textarea value={form.info} onChange={set("info")} rows={3} />
       </Field>
       <FormFooter onCancel={onCancel} />
@@ -224,17 +224,17 @@ export default function AdminMaintenance() {
   const usersById = useMemo(() => Object.fromEntries(state.users.map((u) => [u.id, u])), [state.users]);
   const technicians = useMemo(() => state.users.filter((u) => u.role === "technician" && u.status === "actif"), [state.users]);
   const open = openMaintenance(state.maintenanceTasks);
-  const reports = state.maintenanceTasks.filter((t) => t.status === "Signalé");
+  const reports = state.maintenanceTasks.filter((item) => item.status === "Signalé");
   const [yearAgo] = useState(() => Date.now() - 365 * 86400000);
   const spentYear = sumBy(state.maintenanceHistory.filter((h) => new Date(h.date).getTime() >= yearAgo), (h) => h.cost);
 
   const equipment = useMemo(
-    () => [...new Set([...state.techSheets.map((s) => s.product), ...state.maintenanceTasks.map((t) => t.product), ...state.maintenanceHistory.map((h) => h.product)])],
+    () => [...new Set([...state.techSheets.map((s) => s.product), ...state.maintenanceTasks.map((item) => item.product), ...state.maintenanceHistory.map((h) => h.product)])],
     [state.techSheets, state.maintenanceTasks, state.maintenanceHistory]
   );
 
   const tasks = state.maintenanceTasks
-    .filter((t) => (filter === "open" ? t.status !== "Terminé" : filter === "all" ? true : t.status === filter))
+    .filter((item) => (filter === "open" ? item.status !== "Terminé" : filter === "all" ? true : item.status === filter))
     .sort((a, b) => new Date(a.date) - new Date(b.date));
 
   const costReport = useMemo(
@@ -255,31 +255,29 @@ export default function AdminMaintenance() {
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Organisation"
-        title="Maintenance"
-        description="Signalements des vendeurs, planning des interventions, fiches techniques et coûts d'entretien."
+        eyebrow={t("Organisation")}
+        title={t("Maintenance")}
+        description={t("Signalements des vendeurs, planning des interventions, fiches techniques et coûts d'entretien.")}
         actions={
-          <Button icon={FaPlus} onClick={() => setModal({ type: "task", data: {} })}>
-            Planifier une intervention
-          </Button>
+          <Button icon={FaPlus} onClick={() => setModal({ type: "task", data: {} })}>{t("Planifier une intervention")}</Button>
         }
       />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard title="Interventions ouvertes" value={open.length} icon={FaTools} hint={`${open.filter((t) => new Date(t.date) < new Date()).length} en retard`} />
-        <StatCard title="Signalements à traiter" value={reports.length} icon={FaBullhorn} tone={reports.length ? "violet" : "green"} hint="Remontés par les vendeurs" onClick={() => { setTab("tasks"); setFilter("Signalé"); }} />
-        <StatCard title="Coût estimé à venir" value={formatMoney(sumBy(open, (t) => t.costEstimate))} icon={FaMoneyBillWave} tone="amber" hint="Interventions ouvertes" />
-        <StatCard title="Dépensé sur 12 mois" value={formatMoney(spentYear)} icon={FaHistory} tone="slate" hint={`${state.maintenanceHistory.length} intervention(s) archivée(s)`} />
+        <StatCard title={t("Interventions ouvertes")} value={open.length} icon={FaTools} hint={t("{0} en retard", [open.filter((item) => new Date(item.date) < new Date()).length])} />
+        <StatCard title={t("Signalements à traiter")} value={reports.length} icon={FaBullhorn} tone={reports.length ? "violet" : "green"} hint={t("Remontés par les vendeurs")} onClick={() => { setTab("tasks"); setFilter("Signalé"); }} />
+        <StatCard title={t("Coût estimé à venir")} value={formatMoney(sumBy(open, (item) => item.costEstimate))} icon={FaMoneyBillWave} tone="amber" hint={t("Interventions ouvertes")} />
+        <StatCard title={t("Dépensé sur 12 mois")} value={formatMoney(spentYear)} icon={FaHistory} tone="slate" hint={t("{0} intervention(s) archivée(s)", [state.maintenanceHistory.length])} />
       </div>
 
       <Tabs
         value={tab}
         onChange={setTab}
         options={[
-          { value: "tasks", label: "Interventions", icon: FaCalendarAlt, count: open.length },
-          { value: "history", label: "Historique", icon: FaHistory },
-          { value: "sheets", label: "Fiches techniques", icon: FaFileAlt, count: state.techSheets.length },
-          { value: "costs", label: "Rentabilité", icon: FaBalanceScale },
+          { value: "tasks", label: t("Interventions"), icon: FaCalendarAlt, count: open.length },
+          { value: "history", label: t("Historique"), icon: FaHistory },
+          { value: "sheets", label: t("Fiches techniques"), icon: FaFileAlt, count: state.techSheets.length },
+          { value: "costs", label: t("Rentabilité"), icon: FaBalanceScale },
         ]}
       />
 
@@ -291,15 +289,15 @@ export default function AdminMaintenance() {
               onChange={setFilter}
               size="sm"
               options={[
-                { value: "open", label: "Ouvertes", count: open.length },
-                ...TASK_STATUSES.map((s) => ({ value: s, label: s, count: state.maintenanceTasks.filter((t) => t.status === s).length })),
-                { value: "all", label: "Toutes" },
+                { value: "open", label: t("Ouvertes"), count: open.length },
+                ...TASK_STATUSES.map((s) => ({ value: s, label: s, count: state.maintenanceTasks.filter((item) => item.status === s).length })),
+                { value: "all", label: t("Toutes") },
               ]}
             />
           </div>
           {tasks.length === 0 ? (
             <div className="p-5">
-              <EmptyState icon={FaCheckCircle} title="Rien à afficher" description="Aucune intervention dans cette catégorie." />
+              <EmptyState icon={FaCheckCircle} title={t("Rien à afficher")} description={t("Aucune intervention dans cette catégorie.")} />
             </div>
           ) : (
             <ul className="divide-y divide-slate-100">
@@ -311,10 +309,10 @@ export default function AdminMaintenance() {
                     <div className="min-w-0 flex-1">
                       <div className="flex flex-wrap items-center gap-2">
                         <Badge tone={MAINTENANCE_STATUS[task.status]?.tone} dot>
-                          {task.status}
+                          {t(task.status)}
                         </Badge>
-                        {late && <Badge tone="red">En retard</Badge>}
-                        {task.source === "seller" && <Badge tone="violet" icon={FaBullhorn}>Signalé par {reporter?.name || "un vendeur"}</Badge>}
+                        {late && <Badge tone="red">{t("En retard")}</Badge>}
+                        {task.source === "seller" && <Badge tone="violet" icon={FaBullhorn}>{t("Signalé par")}{" "}{reporter?.name || t("un vendeur")}</Badge>}
                       </div>
                       <p className="mt-1.5 font-semibold text-slate-900">{task.product}</p>
                       <p className="text-sm text-slate-600">{task.task}</p>
@@ -323,9 +321,9 @@ export default function AdminMaintenance() {
                           <FaCalendarAlt size={10} /> {formatDate(task.date)} ({formatRelative(task.date)})
                         </span>
                         <span className="inline-flex items-center gap-1">
-                          <FaUserCog size={10} /> {task.assignedTo || "Non assigné"}
+                          <FaUserCog size={10} /> {task.assignedTo || t("Non assigné")}
                         </span>
-                        {task.costEstimate > 0 && <span>Estimé : {formatMoney(task.costEstimate)}</span>}
+                        {task.costEstimate > 0 && <span>{t("Estimé :")}{" "}{formatMoney(task.costEstimate)}</span>}
                       </p>
                     </div>
                     <div className="flex flex-wrap items-center gap-1.5">
@@ -336,31 +334,29 @@ export default function AdminMaintenance() {
                             onChange={(e) => {
                               if (e.target.value === "Terminé") return setModal({ type: "complete", data: task });
                               actions.saveMaintenanceTask({ id: task.id, status: e.target.value });
-                              toast.success("Statut mis à jour");
+                              toast.success(t("Statut mis à jour"));
                             }}
                             className="w-40 py-1.5 text-xs"
-                            aria-label="Statut"
+                            aria-label={t("Statut")}
                           >
                             {TASK_STATUSES.map((s) => (
-                              <option key={s}>{s}</option>
+                              <option key={s} value={s}>{t(s)}</option>
                             ))}
                           </Select>
-                          <Button size="sm" variant="success" icon={FaClipboardCheck} onClick={() => setModal({ type: "complete", data: task })}>
-                            Clôturer
-                          </Button>
+                          <Button size="sm" variant="success" icon={FaClipboardCheck} onClick={() => setModal({ type: "complete", data: task })}>{t("Clôturer")}</Button>
                         </>
                       )}
-                      <Button size="icon-sm" variant="ghost" onClick={() => setModal({ type: "task", data: task })} aria-label="Modifier">
+                      <Button size="icon-sm" variant="ghost" onClick={() => setModal({ type: "task", data: task })} aria-label={t("Modifier")}>
                         <FaEdit size={12} />
                       </Button>
                       <Button
                         size="icon-sm"
                         variant="danger-ghost"
-                        aria-label="Supprimer"
+                        aria-label={t("Supprimer")}
                         onClick={async () => {
-                          if (await confirm({ title: "Supprimer cette intervention ?", message: `${task.product} — ${task.task}`, confirmLabel: "Supprimer" })) {
+                          if (await confirm({ title: t("Supprimer cette intervention ?"), message: `${task.product} — ${task.task}`, confirmLabel: t("Supprimer") })) {
                             actions.deleteMaintenanceTask(task.id);
-                            toast.success("Intervention supprimée");
+                            toast.success(t("Intervention supprimée"));
                           }
                         }}
                       >
@@ -378,22 +374,19 @@ export default function AdminMaintenance() {
       {tab === "history" && (
         <Card padded={false}>
           <div className="flex items-center justify-between border-b border-slate-100 p-4">
-            <p className="text-sm text-slate-600">
-              Total archivé : <b className="tabular text-slate-900">{formatMoney(sumBy(state.maintenanceHistory, (h) => h.cost))}</b>
+            <p className="text-sm text-slate-600">{t("Total archivé :")}{" "}<b className="tabular text-slate-900">{formatMoney(sumBy(state.maintenanceHistory, (h) => h.cost))}</b>
             </p>
-            <Button size="sm" variant="secondary" icon={FaPlus} onClick={() => setModal({ type: "history" })}>
-              Archiver une intervention
-            </Button>
+            <Button size="sm" variant="secondary" icon={FaPlus} onClick={() => setModal({ type: "history" })}>{t("Archiver une intervention")}</Button>
           </div>
           <div className="scrollbar-thin overflow-x-auto">
             <table className="w-full min-w-160 text-sm">
               <thead>
                 <tr className="border-b border-slate-100 text-left text-[11px] font-semibold uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Date</th>
-                  <th className="px-4 py-3">Équipement</th>
-                  <th className="px-4 py-3">Action</th>
-                  <th className="px-4 py-3">Technicien</th>
-                  <th className="px-4 py-3 text-right">Coût</th>
+                  <th className="px-4 py-3">{t("Date")}</th>
+                  <th className="px-4 py-3">{t("Équipement")}</th>
+                  <th className="px-4 py-3">{t("Action")}</th>
+                  <th className="px-4 py-3">{t("Technicien")}</th>
+                  <th className="px-4 py-3 text-right">{t("Coût")}</th>
                   <th className="px-4 py-3" />
                 </tr>
               </thead>
@@ -414,9 +407,9 @@ export default function AdminMaintenance() {
                         <Button
                           size="icon-sm"
                           variant="danger-ghost"
-                          aria-label="Supprimer"
+                          aria-label={t("Supprimer")}
                           onClick={async () => {
-                            if (await confirm({ title: "Supprimer cette ligne d'historique ?", message: `${h.product} — ${h.action}`, confirmLabel: "Supprimer" })) actions.deleteMaintenanceHistory(h.id);
+                            if (await confirm({ title: t("Supprimer cette ligne d'historique ?"), message: `${h.product} — ${h.action}`, confirmLabel: t("Supprimer") })) actions.deleteMaintenanceHistory(h.id);
                           }}
                         >
                           <FaTrash size={11} />
@@ -433,36 +426,32 @@ export default function AdminMaintenance() {
       {tab === "sheets" && (
         <div className="space-y-4">
           <div className="flex justify-end">
-            <Button variant="secondary" icon={FaPlus} onClick={() => setModal({ type: "sheet", data: {} })}>
-              Nouvelle fiche
-            </Button>
+            <Button variant="secondary" icon={FaPlus} onClick={() => setModal({ type: "sheet", data: {} })}>{t("Nouvelle fiche")}</Button>
           </div>
           {state.techSheets.length === 0 ? (
-            <EmptyState icon={FaFileAlt} title="Aucune fiche technique" description="Documentez vos équipements pour suivre leur coût d'entretien." />
+            <EmptyState icon={FaFileAlt} title={t("Aucune fiche technique")} description={t("Documentez vos équipements pour suivre leur coût d'entretien.")} />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {state.techSheets.map((sheet) => (
                 <Card key={sheet.id} className="flex flex-col">
-                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{sheet.model || "Modèle non renseigné"}</p>
+                  <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">{sheet.model || t("Modèle non renseigné")}</p>
                   <p className="mt-0.5 font-semibold text-slate-900">{sheet.product}</p>
                   {sheet.info && <p className="mt-2 rounded-lg bg-slate-50 p-2.5 text-xs leading-relaxed text-slate-600">{sheet.info}</p>}
                   <div className="mt-3 flex justify-between text-xs text-slate-500">
-                    <span>Valeur : <b className="tabular text-slate-800">{formatMoney(sheet.originalValue)}</b></span>
-                    <span>Acquis le {formatDate(sheet.purchaseDate)}</span>
+                    <span>{t("Valeur :")}{" "}<b className="tabular text-slate-800">{formatMoney(sheet.originalValue)}</b></span>
+                    <span>{t("Acquis le")}{" "}{formatDate(sheet.purchaseDate)}</span>
                   </div>
                   <div className="mt-auto flex gap-1.5 pt-4">
-                    <Button size="sm" variant="secondary" className="flex-1" icon={FaTools} onClick={() => setModal({ type: "task", data: { product: sheet.product, task: "Maintenance préventive" } })}>
-                      Planifier
-                    </Button>
-                    <Button size="icon-sm" variant="ghost" onClick={() => setModal({ type: "sheet", data: sheet })} aria-label="Modifier">
+                    <Button size="sm" variant="secondary" className="flex-1" icon={FaTools} onClick={() => setModal({ type: "task", data: { product: sheet.product, task: t("Maintenance préventive") } })}>{t("Planifier")}</Button>
+                    <Button size="icon-sm" variant="ghost" onClick={() => setModal({ type: "sheet", data: sheet })} aria-label={t("Modifier")}>
                       <FaEdit size={12} />
                     </Button>
                     <Button
                       size="icon-sm"
                       variant="danger-ghost"
-                      aria-label="Supprimer"
+                      aria-label={t("Supprimer")}
                       onClick={async () => {
-                        if (await confirm({ title: "Supprimer cette fiche ?", message: sheet.product, confirmLabel: "Supprimer" })) actions.deleteTechSheet(sheet.id);
+                        if (await confirm({ title: t("Supprimer cette fiche ?"), message: sheet.product, confirmLabel: t("Supprimer") })) actions.deleteTechSheet(sheet.id);
                       }}
                     >
                       <FaTrash size={11} />
@@ -477,30 +466,30 @@ export default function AdminMaintenance() {
 
       {tab === "costs" && (
         <div className="space-y-4">
-          <p className="text-sm text-slate-500">Rapport du cumul des réparations à la valeur d'achat de chaque équipement. Au-delà de 50 %, envisagez un remplacement.</p>
+          <p className="text-sm text-slate-500">{t("Rapport du cumul des réparations à la valeur d'achat de chaque équipement. Au-delà de 50 %, envisagez un remplacement.")}</p>
           {costReport.length === 0 ? (
-            <EmptyState icon={FaBalanceScale} title="Aucune fiche technique" description="Créez des fiches pour suivre la rentabilité de vos équipements." />
+            <EmptyState icon={FaBalanceScale} title={t("Aucune fiche technique")} description={t("Créez des fiches pour suivre la rentabilité de vos équipements.")} />
           ) : (
             <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
               {costReport.map((item) => (
                 <Card key={item.id} className={item.status === "red" ? "border-rose-200" : item.status === "amber" ? "border-amber-200" : ""}>
                   <div className="flex items-start justify-between gap-2">
                     <p className="font-semibold text-slate-900">{item.product}</p>
-                    <Badge tone={item.status}>{item.status === "red" ? "Déficitaire" : item.status === "amber" ? "Coût élevé" : "Rentable"}</Badge>
+                    <Badge tone={item.status}>{item.status === "red" ? t("Déficitaire") : item.status === "amber" ? t("Coût élevé") : t("Rentable")}</Badge>
                   </div>
                   <div className="mt-4 grid grid-cols-2 gap-2 text-sm">
                     <div className="rounded-lg bg-slate-50 p-2.5">
-                      <p className="text-[11px] text-slate-500">Valeur d'achat</p>
+                      <p className="text-[11px] text-slate-500">{t("Valeur d'achat")}</p>
                       <p className="tabular font-semibold text-slate-900">{formatMoney(item.originalValue)}</p>
                     </div>
                     <div className="rounded-lg bg-slate-50 p-2.5">
-                      <p className="text-[11px] text-slate-500">Réparations</p>
+                      <p className="text-[11px] text-slate-500">{t("Réparations")}</p>
                       <p className="tabular font-semibold text-slate-900">{formatMoney(item.repairs)}</p>
                     </div>
                   </div>
                   <div className="mt-3">
                     <div className="mb-1 flex justify-between text-xs">
-                      <span className="text-slate-500">Ratio réparations / valeur</span>
+                      <span className="text-slate-500">{t("Ratio réparations / valeur")}</span>
                       <span className="tabular font-semibold text-slate-800">{item.ratio.toFixed(0)} %</span>
                     </div>
                     <div className="h-2 overflow-hidden rounded-full bg-slate-100">
@@ -509,8 +498,7 @@ export default function AdminMaintenance() {
                   </div>
                   {item.status === "red" && (
                     <p className="mt-3 flex items-start gap-2 rounded-lg bg-rose-50 p-2.5 text-xs text-rose-700">
-                      <FaExclamationTriangle className="mt-0.5 shrink-0" size={11} /> Les réparations dépassent la valeur de l'équipement : remplacement conseillé.
-                    </p>
+                      <FaExclamationTriangle className="mt-0.5 shrink-0" size={11} />{" "}{t("Les réparations dépassent la valeur de l'équipement : remplacement conseillé.")}</p>
                   )}
                 </Card>
               ))}
@@ -519,7 +507,7 @@ export default function AdminMaintenance() {
         </div>
       )}
 
-      <Modal isOpen={modal?.type === "task"} onClose={close} title={modal?.data?.id ? "Modifier l'intervention" : "Planifier une intervention"}>
+      <Modal isOpen={modal?.type === "task"} onClose={close} title={modal?.data?.id ? t("Modifier l'intervention") : t("Planifier une intervention")}>
         {modal?.type === "task" && (
           <TaskForm
             initial={modal.data}
@@ -528,46 +516,46 @@ export default function AdminMaintenance() {
             onCancel={close}
             onSubmit={(data) => {
               actions.saveMaintenanceTask(modal.data.id ? { ...data, id: modal.data.id } : data);
-              toast.success(modal.data.id ? "Intervention mise à jour" : "Intervention planifiée");
+              toast.success(modal.data.id ? t("Intervention mise à jour") : t("Intervention planifiée"));
               close();
             }}
           />
         )}
       </Modal>
-      <Modal isOpen={modal?.type === "complete"} onClose={close} title="Clôturer l'intervention">
+      <Modal isOpen={modal?.type === "complete"} onClose={close} title={t("Clôturer l'intervention")}>
         {modal?.type === "complete" && (
           <CompleteForm
             task={modal.data}
             onCancel={close}
             onSubmit={(data) => {
               actions.completeMaintenanceTask(modal.data.id, data);
-              toast.success("Intervention clôturée et archivée");
+              toast.success(t("Intervention clôturée et archivée"));
               close();
             }}
           />
         )}
       </Modal>
-      <Modal isOpen={modal?.type === "history"} onClose={close} title="Archiver une intervention">
+      <Modal isOpen={modal?.type === "history"} onClose={close} title={t("Archiver une intervention")}>
         {modal?.type === "history" && (
           <HistoryForm
             equipment={equipment}
             onCancel={close}
             onSubmit={(data) => {
               actions.addMaintenanceHistory(data);
-              toast.success("Intervention archivée");
+              toast.success(t("Intervention archivée"));
               close();
             }}
           />
         )}
       </Modal>
-      <Modal isOpen={modal?.type === "sheet"} onClose={close} title={modal?.data?.id ? "Modifier la fiche" : "Nouvelle fiche technique"} size="lg">
+      <Modal isOpen={modal?.type === "sheet"} onClose={close} title={modal?.data?.id ? t("Modifier la fiche") : t("Nouvelle fiche technique")} size="lg">
         {modal?.type === "sheet" && (
           <SheetForm
             initial={modal.data}
             onCancel={close}
             onSubmit={(data) => {
               actions.saveTechSheet(modal.data.id ? { ...data, id: modal.data.id } : data);
-              toast.success("Fiche enregistrée");
+              toast.success(t("Fiche enregistrée"));
               close();
             }}
           />

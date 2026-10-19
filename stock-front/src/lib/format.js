@@ -1,4 +1,5 @@
-const numberFormatter = new Intl.NumberFormat("fr-FR", { maximumFractionDigits: 0 });
+import { locale } from "../i18n/index.js";
+const numberFormatter = new Intl.NumberFormat(locale(), { maximumFractionDigits: 0 });
 
 /** 125000 -> "125 000 F" */
 export function formatMoney(value, suffix = "F") {
@@ -22,19 +23,19 @@ export function formatDate(value, options = {}) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric", ...options });
+  return date.toLocaleDateString(locale(), { day: "2-digit", month: "short", year: "numeric", ...options });
 }
 
 export function formatDateTime(value) {
   if (!value) return "—";
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return String(value);
-  return `${date.toLocaleDateString("fr-FR", { day: "2-digit", month: "short", year: "numeric" })} · ${date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" })}`;
+  return `${date.toLocaleDateString(locale(), { day: "2-digit", month: "short", year: "numeric" })} · ${date.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" })}`;
 }
 
 export function formatTime(value) {
   const date = new Date(value);
-  return date.toLocaleTimeString("fr-FR", { hour: "2-digit", minute: "2-digit" });
+  return date.toLocaleTimeString(locale(), { hour: "2-digit", minute: "2-digit" });
 }
 
 /** "il y a 3 h", "hier", "dans 2 j" */

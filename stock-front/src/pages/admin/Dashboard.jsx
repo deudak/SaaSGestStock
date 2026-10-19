@@ -24,6 +24,8 @@ import {
   totalReceivables,
 } from "../../store/selectors";
 
+import { t } from "../../i18n/index.js";
+
 const periods = [
   { value: 7, label: "7 jours" },
   { value: 30, label: "30 jours" },
@@ -56,7 +58,7 @@ export default function AdminDashboard() {
 
   const marginRate = summary.revenue ? Math.round((summary.margin / summary.revenue) * 100) : 0;
   const hour = new Date().getHours();
-  const greeting = hour < 12 ? "Bonjour" : hour < 18 ? "Bon après-midi" : "Bonsoir";
+  const greeting = hour < 12 ? t("Bonjour") : hour < 18 ? t("Bon après-midi") : t("Bonsoir");
 
   return (
     <div className="space-y-6">
@@ -65,55 +67,49 @@ export default function AdminDashboard() {
           <h1 className="text-2xl font-bold tracking-tight text-slate-900 sm:text-[28px]">
             {greeting}, {currentUser.name.split(" ")[0]}
           </h1>
-          <p className="mt-1 text-sm text-slate-500">Voici la situation de votre activité sur les {days} derniers jours.</p>
+          <p className="mt-1 text-sm text-slate-500">{t("Voici la situation de votre activité sur les")}{" "}{days}{" "}{t("derniers jours.")}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Tabs value={days} onChange={setDays} options={periods} size="sm" />
-          <Button to="/admin/purchases" variant="secondary" size="sm" icon={FaClipboardList}>
-            Commander
-          </Button>
-          <Button to="/admin/products" size="sm" icon={FaBoxes}>
-            Gérer le stock
-          </Button>
+          <Button to="/admin/purchases" variant="secondary" size="sm" icon={FaClipboardList}>{t("Commander")}</Button>
+          <Button to="/admin/products" size="sm" icon={FaBoxes}>{t("Gérer le stock")}</Button>
         </div>
       </div>
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
-        <StatCard title="Chiffre d'affaires" value={formatMoney(summary.revenue)} icon={FaMoneyBillWave} tone="blue" trend={percentChange(summary.revenue, summary.prevRevenue)} />
-        <StatCard title="Marge brute" value={formatMoney(summary.margin)} icon={FaCoins} tone="green" trend={percentChange(summary.margin, summary.prevMargin)} trendLabel={`taux ${marginRate} %`} />
-        <StatCard title="Créances en cours" value={formatMoney(receivables)} icon={FaCreditCard} tone="red" hint={lateCount ? `${lateCount} dossier(s) en retard` : "Aucun retard"} />
-        <StatCard title="Valeur du stock" value={formatMoney(stock.cost)} icon={FaWarehouse} tone="amber" hint={alerts ? `${alerts} alerte(s) de stock` : "Stock sain"} />
+        <StatCard title={t("Chiffre d'affaires")} value={formatMoney(summary.revenue)} icon={FaMoneyBillWave} tone="blue" trend={percentChange(summary.revenue, summary.prevRevenue)} />
+        <StatCard title={t("Marge brute")} value={formatMoney(summary.margin)} icon={FaCoins} tone="green" trend={percentChange(summary.margin, summary.prevMargin)} trendLabel={t("taux {0} %", [marginRate])} />
+        <StatCard title={t("Créances en cours")} value={formatMoney(receivables)} icon={FaCreditCard} tone="red" hint={lateCount ? t("{0} dossier(s) en retard", [lateCount]) : t("Aucun retard")} />
+        <StatCard title={t("Valeur du stock")} value={formatMoney(stock.cost)} icon={FaWarehouse} tone="amber" hint={alerts ? t("{0} alerte(s) de stock", [alerts]) : t("Stock sain")} />
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card className="lg:col-span-2">
           <CardHeader
-            title="Évolution des ventes"
-            subtitle={`${formatNumber(summary.count)} ventes · ${formatNumber(summary.units)} articles vendus`}
+            title={t("Évolution des ventes")}
+            subtitle={t("{0} ventes · {1} articles vendus", [formatNumber(summary.count), formatNumber(summary.units)])}
             icon={FaChartLine}
             action={
               <div className="hidden items-center gap-4 text-xs text-slate-500 sm:flex">
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-brand-600" /> CA
-                </span>
+                  <span className="h-2 w-2 rounded-full bg-brand-600" />{" "}{t("CA")}</span>
                 <span className="flex items-center gap-1.5">
-                  <span className="h-2 w-2 rounded-full bg-emerald-600" /> Marge
-                </span>
+                  <span className="h-2 w-2 rounded-full bg-emerald-600" />{" "}{t("Marge")}</span>
               </div>
             }
           />
           <RevenueChart data={series} />
         </Card>
         <Card>
-          <CardHeader title="Modes de paiement" subtitle="Montants encaissés sur la période" icon={FaMoneyBillWave} tone="green" />
-          {payments.length ? <DonutChart data={payments} centerLabel="Encaissé" /> : <EmptyState title="Aucun encaissement" />}
+          <CardHeader title={t("Modes de paiement")} subtitle={t("Montants encaissés sur la période")} icon={FaMoneyBillWave} tone="green" />
+          {payments.length ? <DonutChart data={payments} centerLabel={t("Encaissé")} /> : <EmptyState title={t("Aucun encaissement")} />}
         </Card>
       </div>
 
       <div className="grid gap-4 lg:grid-cols-3">
         <Card>
-          <CardHeader title="Meilleures ventes" subtitle="Par chiffre d'affaires" icon={FaTrophy} tone="amber" action={<Link to="/admin/analytics" className="text-xs font-semibold text-brand-600">Analyse</Link>} />
-          {best.length ? <BarList data={best} valueKey="revenue" sublabel={(entry) => `${entry.qty} u.`} /> : <EmptyState title="Pas encore de ventes" />}
+          <CardHeader title={t("Meilleures ventes")} subtitle={t("Par chiffre d'affaires")} icon={FaTrophy} tone="amber" action={<Link to="/admin/analytics" className="text-xs font-semibold text-brand-600">{t("Analyse")}</Link>} />
+          {best.length ? <BarList data={best} valueKey="revenue" sublabel={(entry) => `${entry.qty} u.`} /> : <EmptyState title={t("Pas encore de ventes")} />}
         </Card>
         <StockAlertsCard products={state.products} to="/admin/products?status=alert" />
         <ReceivablesCard installments={state.installments} to="/admin/installments" />
@@ -125,7 +121,7 @@ export default function AdminDashboard() {
         </div>
         <div className="space-y-4">
           <Card>
-            <CardHeader title="Performance vendeurs" subtitle={`Sur ${days} jours`} icon={FaUserPlus} tone="violet" action={<Link to="/admin/vendors" className="text-xs font-semibold text-brand-600">Gérer</Link>} />
+            <CardHeader title={t("Performance vendeurs")} subtitle={t("Sur {0} jours", [days])} icon={FaUserPlus} tone="violet" action={<Link to="/admin/vendors" className="text-xs font-semibold text-brand-600">{t("Gérer")}</Link>} />
             <ul className="space-y-3">
               {vendorRanking.map((vendor, index) => (
                 <li key={vendor.id} className="flex items-center gap-3">
@@ -136,8 +132,8 @@ export default function AdminDashboard() {
                       {index === 0 && vendor.revenue > 0 && <FaTrophy size={10} className="text-amber-500" />}
                     </p>
                     <p className="text-xs text-slate-500">
-                      {vendor.count} vente{vendor.count > 1 ? "s" : ""}
-                      {vendor.status !== "actif" && " · inactif"}
+                      {vendor.count}{" "}{t("vente")}{vendor.count > 1 ? "s" : ""}
+                      {vendor.status !== "actif" && t(" · inactif")}
                     </p>
                   </div>
                   <span className="tabular text-[13px] font-semibold text-slate-900">{formatMoney(vendor.revenue)}</span>
@@ -146,9 +142,9 @@ export default function AdminDashboard() {
             </ul>
           </Card>
           <Card>
-            <CardHeader title="Maintenance" subtitle={`${maintenance.length} intervention(s) ouverte(s)`} icon={FaTools} tone="slate" action={<Link to="/admin/maintenance" className="text-xs font-semibold text-brand-600">Ouvrir</Link>} />
+            <CardHeader title={t("Maintenance")} subtitle={t("{0} intervention(s) ouverte(s)", [maintenance.length])} icon={FaTools} tone="slate" action={<Link to="/admin/maintenance" className="text-xs font-semibold text-brand-600">{t("Ouvrir")}</Link>} />
             {maintenance.length === 0 ? (
-              <p className="text-sm text-slate-500">Aucune intervention en attente.</p>
+              <p className="text-sm text-slate-500">{t("Aucune intervention en attente.")}</p>
             ) : (
               <ul className="space-y-2.5">
                 {maintenance.slice(0, 4).map((task) => (
@@ -157,7 +153,7 @@ export default function AdminDashboard() {
                       <p className="truncate text-[13px] font-medium text-slate-800">{task.product}</p>
                       <p className="truncate text-xs text-slate-500">{task.task}</p>
                     </div>
-                    <Badge tone={MAINTENANCE_STATUS[task.status]?.tone}>{task.status}</Badge>
+                    <Badge tone={MAINTENANCE_STATUS[task.status]?.tone}>{t(task.status)}</Badge>
                   </li>
                 ))}
               </ul>

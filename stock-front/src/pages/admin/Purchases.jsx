@@ -13,6 +13,8 @@ import { addDays, formatDate, formatMoney, matches, toDateInput } from "../../li
 import { printPurchaseOrder } from "../../lib/print";
 import { PO_STATUS, lowStockProducts, purchaseOrderTotal } from "../../store/selectors";
 
+import { t } from "../../i18n/index.js";
+
 function suggestedQty(product) {
   return Math.max(product.alertThreshold * 3 - product.stock, product.alertThreshold, 1);
 }
@@ -37,7 +39,7 @@ function OrderForm({ initial, onSubmit, onCancel }) {
 
   const addAlerts = () => {
     const alerts = lowStockProducts(state.products).filter((p) => p.supplierId === supplierId && !items.some((i) => i.productId === p.id));
-    if (!alerts.length) return toast("Aucun produit en alerte pour ce fournisseur.");
+    if (!alerts.length) return toast(t("Aucun produit en alerte pour ce fournisseur."));
     setItems((prev) => [...prev, ...alerts.map((p) => ({ productId: p.id, name: p.name, qty: suggestedQty(p), cost: p.cost }))]);
   };
 
@@ -48,16 +50,16 @@ function OrderForm({ initial, onSubmit, onCancel }) {
       className="space-y-5"
       onSubmit={(event) => {
         event.preventDefault();
-        if (!supplierId) return toast.error("Choisissez un fournisseur.");
+        if (!supplierId) return toast.error(t("Choisissez un fournisseur."));
         const lines = items.filter((i) => i.qty > 0);
-        if (!lines.length) return toast.error("Ajoutez au moins un article.");
+        if (!lines.length) return toast.error(t("Ajoutez au moins un article."));
         onSubmit({ supplierId, expectedAt: new Date(expectedAt).toISOString(), notes, items: lines });
       }}
     >
       <div className="grid gap-4 sm:grid-cols-2">
-        <Field label="Fournisseur" required>
+        <Field label={t("Fournisseur")} required>
           <Select value={supplierId} onChange={(e) => setSupplierId(e.target.value)}>
-            <option value="">Choisir…</option>
+            <option value="">{t("Choisir…")}</option>
             {state.suppliers.map((s) => (
               <option key={s.id} value={s.id}>
                 {s.name}
@@ -65,35 +67,33 @@ function OrderForm({ initial, onSubmit, onCancel }) {
             ))}
           </Select>
         </Field>
-        <Field label="Livraison souhaitée">
+        <Field label={t("Livraison souhaitée")}>
           <Input type="date" value={expectedAt} onChange={(e) => setExpectedAt(e.target.value)} />
         </Field>
       </div>
 
       <div>
         <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-          <p className="text-[13px] font-medium text-slate-700">Articles</p>
+          <p className="text-[13px] font-medium text-slate-700">{t("Articles")}</p>
           {supplierId && (
-            <Button size="xs" variant="ghost" icon={FaLightbulb} onClick={addAlerts}>
-              Ajouter les produits en alerte
-            </Button>
+            <Button size="xs" variant="ghost" icon={FaLightbulb} onClick={addAlerts}>{t("Ajouter les produits en alerte")}</Button>
           )}
         </div>
         <div className="overflow-hidden rounded-xl border border-slate-200">
           {items.length === 0 ? (
-            <p className="px-4 py-6 text-center text-sm text-slate-500">Aucun article. Sélectionnez un produit ci-dessous.</p>
+            <p className="px-4 py-6 text-center text-sm text-slate-500">{t("Aucun article. Sélectionnez un produit ci-dessous.")}</p>
           ) : (
             <ul className="divide-y divide-slate-100">
               {items.map((item) => (
                 <li key={item.productId} className="flex flex-wrap items-center gap-2 px-3 py-2.5">
                   <p className="w-full truncate text-sm font-medium text-slate-800 sm:w-auto sm:flex-1">{item.name}</p>
                   <div className="w-24">
-                    <Input type="number" min="1" value={item.qty} onChange={(e) => updateItem(item.productId, "qty", e.target.value)} className="py-1.5" suffix="u." aria-label="Quantité" />
+                    <Input type="number" min="1" value={item.qty} onChange={(e) => updateItem(item.productId, "qty", e.target.value)} className="py-1.5" suffix="u." aria-label={t("Quantité")} />
                   </div>
                   <div className="w-36 flex-1 sm:flex-none">
-                    <Input type="number" min="0" value={item.cost} onChange={(e) => updateItem(item.productId, "cost", e.target.value)} className="py-1.5" suffix="F" aria-label="Prix d'achat unitaire" />
+                    <Input type="number" min="0" value={item.cost} onChange={(e) => updateItem(item.productId, "cost", e.target.value)} className="py-1.5" suffix="F" aria-label={t("Prix d'achat unitaire")} />
                   </div>
-                  <Button size="icon-sm" variant="danger-ghost" onClick={() => setItems((prev) => prev.filter((i) => i.productId !== item.productId))} aria-label="Retirer">
+                  <Button size="icon-sm" variant="danger-ghost" onClick={() => setItems((prev) => prev.filter((i) => i.productId !== item.productId))} aria-label={t("Retirer")}>
                     <FaTimes size={11} />
                   </Button>
                 </li>
@@ -101,34 +101,29 @@ function OrderForm({ initial, onSubmit, onCancel }) {
             </ul>
           )}
           <div className="flex gap-2 border-t border-slate-100 bg-slate-50/60 p-2.5">
-            <Select value={productToAdd} onChange={(e) => addProduct(e.target.value)} className="py-2" aria-label="Ajouter un produit">
-              <option value="">+ Ajouter un produit{supplierId ? " de ce fournisseur" : ""}…</option>
+            <Select value={productToAdd} onChange={(e) => addProduct(e.target.value)} className="py-2" aria-label={t("Ajouter un produit")}>
+              <option value="">{t("+ Ajouter un produit")}{supplierId ? t(" de ce fournisseur") : ""}…</option>
               {supplierProducts
                 .filter((p) => !items.some((i) => i.productId === p.id))
                 .map((p) => (
                   <option key={p.id} value={p.id}>
-                    {p.name} (stock {p.stock})
-                  </option>
+                    {p.name}{" "}{t("(stock")}{" "}{p.stock})
+                                      </option>
                 ))}
             </Select>
           </div>
         </div>
-        <p className="mt-2 text-right text-sm text-slate-600">
-          Total : <b className="tabular text-slate-900">{formatMoney(total)}</b>
+        <p className="mt-2 text-right text-sm text-slate-600">{t("Total :")}{" "}<b className="tabular text-slate-900">{formatMoney(total)}</b>
         </p>
       </div>
 
-      <Field label="Notes">
-        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder="Conditions, délais, contact…" />
+      <Field label={t("Notes")}>
+        <Textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={2} placeholder={t("Conditions, délais, contact…")} />
       </Field>
 
       <div className="flex flex-col-reverse gap-2 border-t border-slate-100 pt-4 sm:flex-row sm:justify-end">
-        <Button variant="secondary" onClick={onCancel}>
-          Annuler
-        </Button>
-        <Button type="submit" icon={FaCheck}>
-          Enregistrer le bon
-        </Button>
+        <Button variant="secondary" onClick={onCancel}>{t("Annuler")}</Button>
+        <Button type="submit" icon={FaCheck}>{t("Enregistrer le bon")}</Button>
       </div>
     </form>
   );
@@ -162,32 +157,30 @@ export default function AdminPurchases() {
 
   const receive = async (order) => {
     const ok = await confirm({
-      title: `Réceptionner ${order.id} ?`,
-      message: `${order.items.reduce((s, i) => s + i.qty, 0)} article(s) seront ajoutés au stock et les prix d'achat mis à jour.`,
-      confirmLabel: "Réceptionner",
+      title: t("Réceptionner {0} ?", [order.id]),
+      message: t("{0} article(s) seront ajoutés au stock et les prix d'achat mis à jour.", [order.items.reduce((s, i) => s + i.qty, 0)]),
+      confirmLabel: t("Réceptionner"),
       tone: "primary",
     });
     if (!ok) return;
     actions.setPurchaseOrderStatus(order.id, "received");
-    toast.success("Marchandise réceptionnée, stock mis à jour");
+    toast.success(t("Marchandise réceptionnée, stock mis à jour"));
   };
 
   return (
     <div className="space-y-6">
       <PageHeader
-        eyebrow="Stock"
-        title="Approvisionnements"
-        description="Bons de commande fournisseurs. La réception met automatiquement le stock à jour."
+        eyebrow={t("Stock")}
+        title={t("Approvisionnements")}
+        description={t("Bons de commande fournisseurs. La réception met automatiquement le stock à jour.")}
         actions={
-          <Button icon={FaPlus} onClick={() => setEditing({})}>
-            Nouveau bon de commande
-          </Button>
+          <Button icon={FaPlus} onClick={() => setEditing({})}>{t("Nouveau bon de commande")}</Button>
         }
       />
 
       {suggestions.length > 0 && (
         <Card className="border-amber-200 bg-linear-to-br from-amber-50/80 to-white">
-          <CardHeader title="Réapprovisionnement suggéré" subtitle="Produits sous le seuil d'alerte sans commande en cours" icon={FaLightbulb} tone="amber" />
+          <CardHeader title={t("Réapprovisionnement suggéré")} subtitle={t("Produits sous le seuil d'alerte sans commande en cours")} icon={FaLightbulb} tone="amber" />
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {suggestions.map((group) => (
               <div key={group.supplierId} className="rounded-xl border border-amber-200/70 bg-white p-4">
@@ -206,9 +199,7 @@ export default function AdminPurchases() {
                   className="mt-3 w-full"
                   icon={FaPlus}
                   onClick={() => setEditing({ supplierId: group.supplierId, items: group.products.map((p) => ({ productId: p.id, name: p.name, qty: suggestedQty(p), cost: p.cost })) })}
-                >
-                  Préparer la commande
-                </Button>
+                >{t("Préparer la commande")}</Button>
               </div>
             ))}
           </div>
@@ -221,19 +212,18 @@ export default function AdminPurchases() {
             value={tab}
             onChange={setTab}
             size="sm"
-            options={[{ value: "all", label: "Toutes", count: state.purchaseOrders.length }, ...Object.entries(PO_STATUS).map(([value, meta]) => ({ value, label: meta.label, count: counts[value] }))]}
+            options={[{ value: "all", label: t("Toutes"), count: state.purchaseOrders.length }, ...Object.entries(PO_STATUS).map(([value, meta]) => ({ value, label: meta.label, count: counts[value] }))]}
           />
           <div className="flex items-center gap-3">
-            <p className="hidden text-xs text-slate-500 xl:block">
-              En attente de livraison : <b className="tabular text-slate-800">{formatMoney(pendingValue)}</b>
+            <p className="hidden text-xs text-slate-500 xl:block">{t("En attente de livraison :")}{" "}<b className="tabular text-slate-800">{formatMoney(pendingValue)}</b>
             </p>
-            <SearchInput value={search} onChange={setSearch} placeholder="N°, fournisseur, article…" className="w-full lg:w-64" />
+            <SearchInput value={search} onChange={setSearch} placeholder={t("N°, fournisseur, article…")} className="w-full lg:w-64" />
           </div>
         </div>
 
         {list.length === 0 ? (
           <div className="p-5">
-            <EmptyState icon={FaClipboardList} title="Aucun bon de commande" description="Créez un bon pour commander auprès d'un fournisseur." />
+            <EmptyState icon={FaClipboardList} title={t("Aucun bon de commande")} description={t("Créez un bon pour commander auprès d'un fournisseur.")} />
           </div>
         ) : (
           <ul className="divide-y divide-slate-100">
@@ -247,50 +237,46 @@ export default function AdminPurchases() {
                     <div className="flex flex-wrap items-center gap-2">
                       <span className="font-mono text-sm font-semibold text-slate-900">{order.id}</span>
                       <Badge tone={status.tone} dot>
-                        {status.label}
+                        {t(status.label)}
                       </Badge>
-                      {late && <Badge tone="red">Livraison en retard</Badge>}
+                      {late && <Badge tone="red">{t("Livraison en retard")}</Badge>}
                     </div>
-                    <p className="mt-1 text-sm text-slate-700">{supplier?.name || "Fournisseur supprimé"}</p>
+                    <p className="mt-1 text-sm text-slate-700">{supplier?.name || t("Fournisseur supprimé")}</p>
                     <p className="mt-0.5 truncate text-xs text-slate-500">
                       {order.items.map((i) => `${i.qty} × ${i.name}`).join(" · ")}
                     </p>
                   </div>
                   <div className="flex items-center gap-6 text-sm lg:w-64 lg:justify-end">
                     <div className="text-xs text-slate-500">
-                      <p>Créé le {formatDate(order.createdAt)}</p>
-                      <p>{order.status === "received" ? `Reçu le ${formatDate(order.receivedAt)}` : `Prévu le ${formatDate(order.expectedAt)}`}</p>
+                      <p>{t("Créé le")}{" "}{formatDate(order.createdAt)}</p>
+                      <p>{order.status === "received" ? t("Reçu le {0}", [formatDate(order.receivedAt)]) : t("Prévu le {0}", [formatDate(order.expectedAt)])}</p>
                     </div>
                     <p className="tabular ml-auto font-semibold text-slate-900 lg:ml-0">{formatMoney(purchaseOrderTotal(order))}</p>
                   </div>
                   <div className="flex flex-wrap gap-1.5 lg:w-75 lg:justify-end">
                     {order.status === "draft" && (
                       <>
-                        <Button size="sm" icon={FaPaperPlane} onClick={() => { actions.setPurchaseOrderStatus(order.id, "sent"); toast.success(`${order.id} marqué comme envoyé`); }}>
-                          Envoyer
-                        </Button>
-                        <Button size="icon-sm" variant="ghost" onClick={() => setEditing(order)} aria-label="Modifier">
+                        <Button size="sm" icon={FaPaperPlane} onClick={() => { actions.setPurchaseOrderStatus(order.id, "sent"); toast.success(t("{0} marqué comme envoyé", [order.id])); }}>{t("Envoyer")}</Button>
+                        <Button size="icon-sm" variant="ghost" onClick={() => setEditing(order)} aria-label={t("Modifier")}>
                           <FaEdit size={12} />
                         </Button>
                       </>
                     )}
                     {order.status === "sent" && (
-                      <Button size="sm" variant="success" icon={FaTruckLoading} onClick={() => receive(order)}>
-                        Réceptionner
-                      </Button>
+                      <Button size="sm" variant="success" icon={FaTruckLoading} onClick={() => receive(order)}>{t("Réceptionner")}</Button>
                     )}
-                    <Button size="icon-sm" variant="ghost" onClick={() => printPurchaseOrder(order, { settings: state.settings, supplier })} aria-label="Imprimer">
+                    <Button size="icon-sm" variant="ghost" onClick={() => printPurchaseOrder(order, { settings: state.settings, supplier })} aria-label={t("Imprimer")}>
                       <FaPrint size={12} />
                     </Button>
                     {(order.status === "draft" || order.status === "sent") && (
                       <Button
                         size="icon-sm"
                         variant="danger-ghost"
-                        aria-label="Annuler la commande"
+                        aria-label={t("Annuler la commande")}
                         onClick={async () => {
-                          if (await confirm({ title: "Annuler ce bon de commande ?", message: "Le bon restera visible avec le statut « Annulée ».", confirmLabel: "Annuler le bon" })) {
+                          if (await confirm({ title: t("Annuler ce bon de commande ?"), message: t("Le bon restera visible avec le statut « Annulée »."), confirmLabel: t("Annuler le bon") })) {
                             actions.setPurchaseOrderStatus(order.id, "cancelled");
-                            toast.success("Bon de commande annulé");
+                            toast.success(t("Bon de commande annulé"));
                           }
                         }}
                       >
@@ -301,9 +287,9 @@ export default function AdminPurchases() {
                       <Button
                         size="icon-sm"
                         variant="danger-ghost"
-                        aria-label="Supprimer"
+                        aria-label={t("Supprimer")}
                         onClick={async () => {
-                          if (await confirm({ title: "Supprimer définitivement ?", message: `${order.id} sera supprimé.`, confirmLabel: "Supprimer" })) {
+                          if (await confirm({ title: t("Supprimer définitivement ?"), message: t("{0} sera supprimé.", [order.id]), confirmLabel: t("Supprimer") })) {
                             actions.deletePurchaseOrder(order.id);
                           }
                         }}
@@ -319,14 +305,14 @@ export default function AdminPurchases() {
         )}
       </Card>
 
-      <Modal isOpen={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.id ? `Modifier ${editing.id}` : "Nouveau bon de commande"} size="lg">
+      <Modal isOpen={Boolean(editing)} onClose={() => setEditing(null)} title={editing?.id ? t("Modifier {0}", [editing.id]) : t("Nouveau bon de commande")} size="lg">
         {editing && (
           <OrderForm
             initial={editing}
             onCancel={() => setEditing(null)}
             onSubmit={(data) => {
               const id = actions.savePurchaseOrder(editing.id ? { ...data, id: editing.id } : data);
-              toast.success(editing.id ? "Bon de commande mis à jour" : `Bon ${id} créé en brouillon`);
+              toast.success(editing.id ? t("Bon de commande mis à jour") : t("Bon {0} créé en brouillon", [id]));
               setEditing(null);
             }}
           />

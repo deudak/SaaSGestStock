@@ -7,7 +7,10 @@ import { ConnectivityProvider } from "./store/ConnectivityContext";
 import { AuthProvider } from "./store/AuthContext";
 import { StoreProvider } from "./store/StoreContext";
 import { ConfirmProvider } from "./components/ui/Confirm";
+import { initTheme } from "./lib/theme";
 import "./index.css";
+
+initTheme();
 
 // Réseau (mode hors ligne) → session (utilisateur + entreprise) → données de l'entreprise
 ReactDOM.createRoot(document.getElementById("root")).render(
